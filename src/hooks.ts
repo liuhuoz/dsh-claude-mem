@@ -26,6 +26,79 @@ export interface HooksConfig {
 /** Untyped listener registration: the `agent/*` event map is version-dependent. */
 type OnAny = (event: string, handler: (...args: any[]) => any) => void
 
+let workerBootAt = 0
+
+/**
+ * Best-effort worker bootstrap. `claude-mem start` is host-agnostic and
+ * idempotent: it reuses a live worker (PID file + readiness probe) and only
+ * spawns one when none is running. Throttled so a down worker cannot make
+ * every tool call spawn a launcher.
+ */
+function ensureWorkerStarted(): void {
+  const now = Date.now()
+  if (now - workerBootAt < 60_000) return
+  workerBootAt = now
+  try {
+    const child = spawn(hookLauncher(), ['start'], { stdio: 'ignore', detached: true, windowsHide: true })
+    child.on('error', () => {})
+    child.unref()
+  } catch {
+    // Bootstrap is best-effort; the worker being down surfaces through the tools.
+  }
+}
+
+/** claude-mem's hook launcher: the same entry Claude Code runs for PostToolUse. */
+function hookLauncher(): string {
+  const explicit = process.env.DSH_MEM_HOOK_BIN
+  if (explicit !== undefined && explicit.length > 0) return explicit
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA
+    if (local !== undefined && local.length > 0) return `${local}\\claude-mem\\bin\\claude-mem.exe`
+  }
+  return 'claude-mem'
+}
+
+/** Claude Code tool names, so claude-mem's skip and filtering rules keep matching. */
+function hookToolName(name: string): string {
+  if (name === 'ops_bash' || name === 'pwsh' || name === 'bash' || name === 'shell') return 'Bash'
+  if (name === 'read') return 'Read'
+  if (name === 'write') return 'Write'
+  if (name === 'edit') return 'Edit'
+  return name
+}
+
+/**
+ * Feed one tool result through claude-mem's own observation pipeline. The hook
+ * launcher runs the observer model, produces a semantic observation, and
+ * attributes it to the real content session.
+ */
+function recordToolUse(exec: ToolExecution, agent: Agent, text: string): void {
+  const header = agent.session.header
+  const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
+  const payload = {
+    session_id: agent.session.id,
+    transcript_path: '',
+    cwd,
+    hook_event_name: 'PostToolUse',
+    tool_name: hookToolName(exec.name),
+    tool_input: exec.arguments ?? {},
+    tool_response: { content: [{ type: 'text', text }], is_error: false },
+  }
+  try {
+    const child = spawn(hookLauncher(), ['hook', 'claude-code', 'observation'], {
+      stdio: ['pipe', 'ignore', 'ignore'],
+      windowsHide: true,
+    })
+    child.on('error', () => {
+      ensureWorkerStarted()
+    })
+    child.stdin.on('error', () => {})
+    child.stdin.end(JSON.stringify(payload))
+  } catch {
+    ensureWorkerStarted()
+  }
+}
+
 /** Subagent sessions get their context from the parent, never from global memory. */
 function isSubagent(agent: Agent): boolean {
   const header = agent.session.header
@@ -53,11 +126,15 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
   const project = projectName(agent, config)
   worker
     .sessionInit({ contentSessionId: agent.session.id, project, prompt: text, ...platform(config) })
-    .catch(() => {})
+    .catch(() => {
+      ensureWorkerStarted()
+    })
 }
 
 /** Attach the memory lifecycle hooks to their extension points. */
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, config: HooksConfig): void {
+  ensureWorkerStarted()
+
   const on = ctx.on.bind(ctx) as unknown as OnAny
 
   on('agent/created', (payload: { agent: Agent }) => {
@@ -106,6 +183,7 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, config: Ho
   } catch {
     // Context seeding is best-effort: an unavailable worker must not block the
     // first turn. The worker being down is reported by the mem_* tools instead.
+    ensureWorkerStarted()
   }
 }
 
@@ -119,62 +197,13 @@ function observeToolResult(exec: ToolExecution, result: Readonly<ToolExecutionRe
   recordToolUse(exec, agent, text)
 }
 
-/** claude-mem's hook launcher: the same entry Claude Code runs for PostToolUse. */
-function hookLauncher(): string {
-  const explicit = process.env.DSH_MEM_HOOK_BIN
-  if (explicit !== undefined && explicit.length > 0) return explicit
-  if (process.platform === 'win32') {
-    const local = process.env.LOCALAPPDATA
-    if (local !== undefined && local.length > 0) return `${local}\\claude-mem\\bin\\claude-mem.exe`
-  }
-  return 'claude-mem'
-}
-
-/** Claude Code tool names, so claude-mem's skip and filtering rules keep matching. */
-function hookToolName(name: string): string {
-  if (name === 'ops_bash' || name === 'pwsh' || name === 'bash' || name === 'shell') return 'Bash'
-  if (name === 'read') return 'Read'
-  if (name === 'write') return 'Write'
-  if (name === 'edit') return 'Edit'
-  return name
-}
-
-/**
- * Feed one tool result through claude-mem's own observation pipeline. The hook
- * launcher runs the observer model, produces a semantic observation, and
- * attributes it to the real content session.
- */
-function recordToolUse(exec: ToolExecution, agent: Agent, text: string): void {
-  const header = agent.session.header
-  const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
-  const payload = {
-    session_id: agent.session.id,
-    transcript_path: '',
-    cwd,
-    hook_event_name: 'PostToolUse',
-    tool_name: hookToolName(exec.name),
-    tool_input: exec.arguments ?? {},
-    tool_response: { content: [{ type: 'text', text }], is_error: false },
-  }
-  try {
-    const child = spawn(hookLauncher(), ['hook', 'claude-code', 'observation'], {
-      stdio: ['pipe', 'ignore', 'ignore'],
-      windowsHide: true,
-    })
-    child.on('error', () => {})
-    child.stdin.on('error', () => {})
-    child.stdin.end(JSON.stringify(payload))
-  } catch {
-    // Ingestion is fire-and-forget alongside the real tool's success.
-  }
-}
-
 async function summarizeSession(worker: WorkerClient, agent: Agent, config: HooksConfig): Promise<void> {
   const project = projectName(agent, config)
   try {
     await worker.sessionSummarize({ contentSessionId: agent.session.id, project, ...platform(config) })
   } catch {
     // Summarization is best-effort.
+    ensureWorkerStarted()
   }
 }
 
