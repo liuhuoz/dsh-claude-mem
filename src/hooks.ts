@@ -10,6 +10,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution, ToolExecutionResult, PostToolDecision } from '@deepseek-ai/dsh-tools'
+import { spawn } from 'node:child_process'
 import { basename } from 'node:path'
 import type { WorkerClient } from './worker.js'
 
@@ -73,7 +74,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, config: Hoo
 
   if (config.ingest) {
     ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
-      void observeToolResult(worker, exec, result, config)
+      observeToolResult(exec, result, config)
       return next()
     })
   }
@@ -108,20 +109,61 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, config: Ho
   }
 }
 
-async function observeToolResult(worker: WorkerClient, exec: ToolExecution, result: Readonly<ToolExecutionResult>, config: HooksConfig): Promise<void> {
+function observeToolResult(exec: ToolExecution, result: Readonly<ToolExecutionResult>, config: HooksConfig): void {
   if (result.isError) return
   if (!config.toolFilter.names.includes(exec.name)) return
   const agent = exec.agent
   if (agent === undefined) return
   const text = resultContentText(result.content)
   if (text.length === 0) return
-  const project = projectName(agent, config)
+  recordToolUse(exec, agent, text)
+}
+
+/** claude-mem's hook launcher: the same entry Claude Code runs for PostToolUse. */
+function hookLauncher(): string {
+  const explicit = process.env.DSH_MEM_HOOK_BIN
+  if (explicit !== undefined && explicit.length > 0) return explicit
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA
+    if (local !== undefined && local.length > 0) return `${local}\\claude-mem\\bin\\claude-mem.exe`
+  }
+  return 'claude-mem'
+}
+
+/** Claude Code tool names, so claude-mem's skip and filtering rules keep matching. */
+function hookToolName(name: string): string {
+  if (name === 'ops_bash' || name === 'pwsh' || name === 'bash' || name === 'shell') return 'Bash'
+  if (name === 'read') return 'Read'
+  if (name === 'write') return 'Write'
+  if (name === 'edit') return 'Edit'
+  return name
+}
+
+/**
+ * Feed one tool result through claude-mem's own observation pipeline. The hook
+ * launcher runs the observer model, produces a semantic observation, and
+ * attributes it to the real content session.
+ */
+function recordToolUse(exec: ToolExecution, agent: Agent, text: string): void {
+  const header = agent.session.header
+  const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
+  const payload = {
+    session_id: agent.session.id,
+    transcript_path: '',
+    cwd,
+    hook_event_name: 'PostToolUse',
+    tool_name: hookToolName(exec.name),
+    tool_input: exec.arguments ?? {},
+    tool_response: { content: [{ type: 'text', text }], is_error: false },
+  }
   try {
-    await worker.save({
-      text: `[${exec.name}] ${text}`,
-      project,
-      ...platform(config),
+    const child = spawn(hookLauncher(), ['hook', 'claude-code', 'observation'], {
+      stdio: ['pipe', 'ignore', 'ignore'],
+      windowsHide: true,
     })
+    child.on('error', () => {})
+    child.stdin.on('error', () => {})
+    child.stdin.end(JSON.stringify(payload))
   } catch {
     // Ingestion is fire-and-forget alongside the real tool's success.
   }
