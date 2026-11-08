@@ -88,8 +88,8 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, config: Hoo
 async function seedSessionContext(worker: WorkerClient, agent: Agent, config: HooksConfig): Promise<void> {
   const project = projectName(agent, config)
   try {
-    const sessionId = agent.session.id
-    await worker.sessionInit({ contentSessionId: sessionId, project, ...platform(config) })
+    // The session row is created by recordPrompt() carrying the real prompt
+    // text, so no placeholder "[media prompt]" row is written here.
     const text = await worker.context({ projects: project, ...platform(config) })
     if (text.length === 0) return
     // DSH 0.2.x rejects the retired `{ kind: 'plugin', ... }` wrapper and has no
