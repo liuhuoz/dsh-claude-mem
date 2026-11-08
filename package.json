@@ -42,20 +42,20 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.0",
-    "@deepseek-ai/dsh-agent": ">=0.1.0-rc.6",
-    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-skill": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
-    "@deepseek-ai/schemastery": ">=3.18.0"
+    "@deepseek-ai/cordis": ">=4.1.0",
+    "@deepseek-ai/dsh-agent": ">=0.2.1-0",
+    "@deepseek-ai/dsh-llm": ">=0.2.1-0",
+    "@deepseek-ai/dsh-skill": ">=0.2.1-0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-0",
+    "@deepseek-ai/schemastery": ">=3.19.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-llm": "^0.0.1-rc.1",
-    "@deepseek-ai/dsh-skill": "^0.0.1-rc.1",
-    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/schemastery": "3.19.0",
     "@types/node": "^26.2.0",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.0",

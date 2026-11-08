@@ -22,12 +22,53 @@ export interface HooksConfig {
   toolFilter: { names: string[] }
 }
 
+/** Untyped listener registration: the `agent/*` event map is version-dependent. */
+type OnAny = (event: string, handler: (...args: any[]) => any) => void
+
+/** Subagent sessions get their context from the parent, never from global memory. */
+function isSubagent(agent: Agent): boolean {
+  const header = agent.session.header
+  return header.origin === 'subagent' || (header.delegationDepth ?? 0) > 0
+}
+
+/** Text of the genuine user prompts entering this step, ignoring injected context. */
+function promptText(messages: readonly UserMessage[]): string {
+  const parts: string[] = []
+  for (const message of messages) {
+    if (message.role !== 'user') continue
+    if (message.source.kind !== 'user') continue
+    for (const block of message.content) {
+      if (block.type === 'text' && block.text.trim().length > 0) parts.push(block.text)
+    }
+  }
+  return parts.join('\n').trim()
+}
+
+/** Record the real prompt text so claude-mem stops storing "[media prompt]". */
+function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly UserMessage[], config: HooksConfig): void {
+  if (isSubagent(agent)) return
+  const text = promptText(messages)
+  if (text.length === 0) return
+  const project = projectName(agent, config)
+  worker
+    .sessionInit({ contentSessionId: agent.session.id, project, prompt: text, ...platform(config) })
+    .catch(() => {})
+}
+
 /** Attach the memory lifecycle hooks to their extension points. */
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, config: HooksConfig): void {
-  ctx.on('agent/session-start', (payload: { agent: Agent }) => {
+  const on = ctx.on.bind(ctx) as unknown as OnAny
+
+  on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     if (!config.injectContext) return
+    if (isSubagent(agent)) return
     void seedSessionContext(worker, agent, config)
+  })
+
+  on('agent/pre-step', (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
+    recordPrompt(worker, payload.agent, payload.messages, config)
+    return next()
   })
 
   if (config.ingest) {
@@ -51,9 +92,14 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, config: Ho
     await worker.sessionInit({ contentSessionId: sessionId, project, ...platform(config) })
     const text = await worker.context({ projects: project, ...platform(config) })
     if (text.length === 0) return
+    // DSH 0.2.x rejects the retired `{ kind: 'plugin', ... }` wrapper and has no
+    // catch-all producer kind; a plugin declares its own through MessageSourceMap,
+    // which this package cannot augment against the published harness types, so
+    // the producer kind is asserted here. The runtime accepts any non-empty kind
+    // other than 'plugin'.
     const message: UserMessage = createUserMessage({
       content: [{ type: 'text', text }],
-      source: { kind: 'plugin', plugin: 'claude-mem' },
+      source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
     })
     agent.inject(message)
   } catch {
