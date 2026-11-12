@@ -21,103 +21,75 @@ import { applyMemoryTools } from './tools.js'
 import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
+import { resolveSettings, type LiveSettings } from './settings.js'
 
 export const name = 'dsh-claude-mem'
 export const inject = ['tools', 'skills']
 
 /**
  * Port the worker published in `~/.claude-mem/worker.pid`. The plugin only ever
- * *finds* the worker; claude-mem decides where it listens.
+ * *finds* the worker; claude-mem decides where it listens. Cached briefly
+ * because the resolved base URL is now read per request rather than once.
  */
+let portCache: { at: number; port: number | undefined } | undefined
+
 function publishedWorkerPort(): number | undefined {
+  const now = Date.now()
+  if (portCache !== undefined && now - portCache.at < 30_000) return portCache.port
+  let port: number | undefined
   try {
-    return parseWorkerPid(readFileSync(join(homedir(), '.claude-mem', 'worker.pid'), 'utf8'))
+    port = parseWorkerPid(readFileSync(join(homedir(), '.claude-mem', 'worker.pid'), 'utf8'))
   } catch {
-    return undefined
+    port = undefined
   }
+  portCache = { at: now, port }
+  return port
 }
 
-/** Plugin configuration. */
-export interface Config {
-  /** Worker base URL. Defaults to `$DSH_MEM_BASE_URL` or the derived localhost address. */
-  baseUrl?: string
-  /** Per-request timeout (ms). Defaults to 30000. */
-  timeoutMs?: number
-  /** Collapse duplicate observations in query results (content fingerprint, not identity). Defaults to true. */
-  dedupe?: boolean
-  /** Optional platform-scope filter (e.g. `"dsh"`). Omitted = unfiltered. */
-  platformSource?: string
-  /** Project name for context/session calls; defaults to the session cwd basename. */
-  project?: string
-  /** Inject session-start context via `agent.inject()`. Defaults to true. */
-  injectContext?: boolean
-  /** Observe tool results and save manual memories. Defaults to false. */
-  ingest?: boolean
-  /** Summarize the session on turn stop. Defaults to false. */
-  summarize?: boolean
-  /** Tool names observed for ingestion (only when `ingest` is true). */
-  toolFilter?: { names?: string[] }
-  /** Hook launcher executable. Empty = `$DSH_MEM_HOOK_BIN`, then the platform default. */
-  hookPath?: string
-  /** Start a worker when none is running. Defaults to true. */
-  autoStartWorker?: boolean
-}
-
-export const Config: Schema<Config> = Schema.object({
-  baseUrl: Schema.string().default(''),
+/**
+ * Plugin configuration.
+ *
+ * The fields the settings page edits are `.volatile()`: schemastery then hands
+ * the plugin a cell that the host writes in place, which is what lets an edit
+ * take effect without remounting the plugin. Without that marker the settings
+ * service projects no form for this namespace and the page has nothing to show.
+ * Those values are read through `resolveSettings()` at the moment they are used.
+ * `timeoutMs`, `dedupe`, `project` and `platformSource` stay plain, so changing
+ * them still needs a reload.
+ */
+export const Config = Schema.object({
+  baseUrl: Schema.string().default('').volatile(),
   timeoutMs: Schema.number().default(30_000),
   dedupe: Schema.boolean().default(true),
   platformSource: Schema.string().default(''),
   project: Schema.string().default(''),
-  injectContext: Schema.boolean().default(true),
-  ingest: Schema.boolean().default(false),
-  summarize: Schema.boolean().default(false),
+  injectContext: Schema.boolean().default(true).volatile(),
+  ingest: Schema.boolean().default(false).volatile(),
+  summarize: Schema.boolean().default(false).volatile(),
   toolFilter: Schema.object({
     names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash']),
-  }).default({ names: ['read', 'write', 'edit', 'bash'] }),
-  hookPath: Schema.string().default(''),
-  autoStartWorker: Schema.boolean().default(true),
+  }).default({ names: ['read', 'write', 'edit', 'bash'] }).volatile(),
+  hookPath: Schema.string().default('').volatile(),
+  autoStartWorker: Schema.boolean().default(true).volatile(),
 })
 
-type ResolvedConfig = Config & {
-  baseUrl: string
-  timeoutMs: number
-  dedupe: boolean
-  platformSource: string
-  project: string
-  injectContext: boolean
-  ingest: boolean
-  summarize: boolean
-  toolFilter: { names: string[] }
-  hookPath: string
-  autoStartWorker: boolean
-}
-
 /** Mount the worker client, the model-facing tools plus the mem-search skill, and the lifecycle hooks. */
-export function apply(ctx: Context, config: Config): void {
-  const resolved = config as ResolvedConfig
-  assertPositiveInteger('timeoutMs', resolved.timeoutMs)
+export function apply(ctx: Context, config: unknown): void {
+  const current = (): LiveSettings => resolveSettings(config)
+  const initial = current()
+  assertPositiveInteger('timeoutMs', initial.timeoutMs)
 
   const worker = new WorkerClient({
-    baseUrl: resolveBaseUrl(resolved.baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()),
-    timeoutMs: resolved.timeoutMs,
-    dedupe: resolved.dedupe,
+    baseUrl: () => resolveBaseUrl(current().baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()),
+    timeoutMs: initial.timeoutMs,
+    dedupe: initial.dedupe,
   })
 
   ctx.skills.register(memSearchSkill)
   applyMemoryTools(ctx, worker, {
-    timeoutMs: resolved.timeoutMs,
+    timeoutMs: initial.timeoutMs,
   })
-  applyMemoryHooks(ctx, worker, {
-    platformSource: resolved.platformSource,
-    project: resolved.project,
-    injectContext: resolved.injectContext,
-    ingest: resolved.ingest,
-    summarize: resolved.summarize,
-    toolFilter: resolved.toolFilter,
-    hookPath: resolved.hookPath,
-    autoStartWorker: resolved.autoStartWorker,
-  })
+  applyMemoryHooks(ctx, worker, current)
 }
 
 function assertPositiveInteger(field: string, value: number): void {

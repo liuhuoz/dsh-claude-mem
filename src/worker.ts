@@ -22,8 +22,11 @@ import { dedupeObservations, dedupeRenderedTable } from './dedupe.js'
 
 /** Resolved client limits. */
 export interface WorkerLimits {
-  /** Worker base URL, e.g. `http://127.0.0.1:37700`. */
-  baseUrl: string
+  /**
+   * Worker base URL, e.g. `http://127.0.0.1:37700`. A reader is accepted because
+   * the settings page edits the address live; it is consulted per request.
+   */
+  baseUrl: string | (() => string)
   /** Per-request timeout in milliseconds. */
   timeoutMs: number
   /** Collapse duplicate observations in query results. Defaults to true. */
@@ -203,7 +206,8 @@ export class WorkerClient {
   }
 
   private urlFor(path: string, query?: URLSearchParams): string {
-    const base = this.limits.baseUrl.replace(/\/+$/, '')
+    const configured = typeof this.limits.baseUrl === 'function' ? this.limits.baseUrl() : this.limits.baseUrl
+    const base = configured.replace(/\/+$/, '')
     const qs = query !== undefined && query.size > 0 ? `?${query.toString()}` : ''
     return `${base}${path}${qs}`
   }

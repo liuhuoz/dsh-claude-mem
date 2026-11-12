@@ -261,3 +261,37 @@ window.__ModuleLoader__.load({ id: "@liuhuoz/dsh-claude-mem", factory: (require)
 **没有改**的两处，因为它们指的不是插件：`src/hooks.ts` 的 `'claude-mem'` 是 PATH 上的可执行文件名回退值；`{ kind: 'claude-mem' }` 是注入消息的来源标记。
 
 迁移代价：profile 里已有的行（`~/.dsh/profiles/desktop/cordis.patch.yml`）必须同步改 id，否则该行会变成找不到同名 bundle 行的孤儿，配置失效。发布给他人前应作为不兼容变更处理。
+
+### 10.3 设置表单只认 volatile 字段
+
+页面第一次真正打开时显示“插件配置加载完成前此页不可用”，即宿主传给条目的 `form` 是 `undefined`。
+
+根因在 `dsh-client-ui-plugin-manager` 的 `formFor`：
+
+```js
+const configurations = props.useConfigurations((snapshot) => snapshot.view?.namespaces)
+const formFor = (id) => {
+  if (!configurations?.some((view) => view.ns === id)) return undefined   // ← 没有命名空间就没有 form
+  ...
+}
+```
+
+而命名空间由 `@deepseek-ai/dsh-settings` 的 `describe()` 投影，其中 `volatileForm(schema)` 只保留 `meta.volatile` 为真的字段；若一个字段都不剩，整个命名空间不出现：
+
+```js
+function volatileForm(schema) {
+  if (schema.meta.volatile) return plainSchema(schema)
+  if (schema.type === 'object') { /* 只递归保留 volatile 子字段 */ }
+  // 非对象且非 volatile → undefined
+}
+```
+
+所以：**想出现在设置表单里的字段必须 `.volatile()`**，否则该行的配置命名空间根本不存在，`form` 永远是 `undefined`。
+
+对应改动：
+
+- `Config` 里页面要编辑的 7 个字段（`baseUrl`、`hookPath`、`injectContext`、`ingest`、`summarize`、`autoStartWorker`、`toolFilter`）加 `.volatile()`；`timeoutMs`、`dedupe`、`project`、`platformSource` 保持普通字段，改它们仍需重载。
+- volatile 字段在运行时是**单元格**而不是值，宿主原地写入该单元格——这正是“改完立即生效”的机制。因此新增 `src/settings.ts` 的 `resolveSettings()`，在**每次使用**时解包读取，而不是在 `apply()` 里读一次。
+- `hooks.ts` 由“注册时读取配置”改为“每次钩子触发时读取”；`ingest`/`summarize` 的监听器改为**始终注册**、在回调内判断开关，否则页面上的开关拨不动行为。
+- `WorkerClient` 的 `baseUrl` 接受 `string | () => string`，从而地址改动立即对后续请求生效。
+- `tests/settings.spec.ts` 断言两件事：`resolveSettings` 能解包单元格；序列化后的 schema 里那 7 个字段都带 `meta.volatile`。后者正是这次事故的回归护栏。
