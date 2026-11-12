@@ -25,11 +25,22 @@ export default defineConfig([
   {
     entry: { client: 'src/client/index.ts' },
     outDir: 'lib',
-    format: ['esm'],
+    format: ['cjs'],
     platform: 'browser',
     target: 'es2022',
     dts: false,
     clean: false,
+    outExtensions: () => ({ js: '.js' }),
     deps: { neverBundle: [/^react(\/|$)/, /^@deepseek-ai\//] },
+    // The host loads this file as a classic script and runs it through its
+    // lazy-CJS module table: the bundle must register a factory rather than
+    // be an ES module. `require` inside the factory resolves against the
+    // host's module table, which is where react and the ui-* packages live.
+    banner: {
+      js: `window.__ModuleLoader__.load({id:"@liuhuoz/dsh-claude-mem",factory:(require)=>{var module={exports:{}};var exports=module.exports;`,
+    },
+    footer: {
+      js: 'return module.exports;}});',
+    },
   },
 ])

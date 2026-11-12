@@ -221,3 +221,27 @@ ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
 3. `form.state.writable` 与 `revision` 在保存前后的实际取值。
 
 要在本机验证，需要一次 `pnpm install` 重建这个包的开发依赖（现有 `node_modules.dev` 是从 `dsh-claude-mem-git` 搬来的，pnpm 拒绝在其上增量安装），然后重启 DSH。
+
+### 10.1 首次真实启动的故障与修复
+
+第一次重启直接导致 web boot 失败，日志在 `%APPDATA%/@deepseek-ai/dsh-desktop/logs/crash-*-web-boot.log`：
+
+```
+Error: web boot: 1 entry did not activate
+@liuhuoz/dsh-claude-mem: import failed (see console for the import error)
+dsh-app://app/plugins/??...@liuhuoz/dsh-claude-mem/client.js:1 Uncaught SyntaxError: Cannot use import statement outside a module
+```
+
+原因：`dsh-client-modules` 把每个插件的 `client.js` 当**经典脚本**加载，执行宿主自带的 lazy-CJS 模块表（`window.__ModuleLoader__.load`）；而 tsdown 当时按 ESM 输出，顶层 `import` 在经典脚本里是语法错误，而且这一份坏的 ESM 还被拼进启动 combo，连带打乱了同批其他插件。
+
+修复：客户端产物改为 CJS，并用 `banner`/`footer` 包成宿主期望的工厂形态：
+
+```js
+window.__ModuleLoader__.load({ id: "@liuhuoz/dsh-claude-mem", factory: (require) => {
+  var module = { exports: {} }; var exports = module.exports;
+  /* …CJS 正文，react 与 @deepseek-ai/* 走 require… */
+  return module.exports;
+}});
+```
+
+形态对照的是已在本机正常运行的 `dsh-notify-me` 与 `@michengai/dsh-code-review` 两个产物。新增 `tests/client-bundle.spec.ts`：用 `node:vm` 按宿主的方式加载产物、跑 `apply()`，产物若退回 ESM 该测试即失败。
