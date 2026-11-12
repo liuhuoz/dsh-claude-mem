@@ -81,6 +81,6 @@ export const zh: Record<MessageKey, string> = {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Copy rendered by the claude-mem configuration page. */
-    'claude-mem': MessageKey
+    'dsh-claude-mem': MessageKey
   }
 }

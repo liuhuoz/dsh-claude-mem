@@ -54,7 +54,7 @@ describe('client bundle', () => {
 
   it.skipIf(entry === undefined)('executes as CommonJS and exports the plugin surface', () => {
     const exports = entry!.factory(requireStub)
-    expect(Object.keys(exports).sort()).toEqual(['PACKAGE', 'ROW_ID', 'apply', 'inject', 'name'])
+    expect(Object.keys(exports).sort()).toEqual(['LOCALE', 'PACKAGE', 'ROW_ID', 'apply', 'inject', 'name'])
     expect(exports.inject).toEqual(['slots', 'locale'])
   })
 
@@ -90,14 +90,14 @@ describe('client bundle', () => {
     ;(exports.apply as (ctx: unknown) => void)(ctx)
 
     expect(dictionaries).toEqual([
-      { namespace: 'claude-mem', locale: 'en' },
-      { namespace: 'claude-mem', locale: 'zh' },
+      { namespace: 'dsh-claude-mem', locale: 'en' },
+      { namespace: 'dsh-claude-mem', locale: 'zh' },
     ])
     expect(registrations).toHaveLength(1)
     expect(registrations[0]).toMatchObject({
       name: 'plugins.row.config',
-      key: '@liuhuoz/dsh-claude-mem#claude-mem',
-      locale: 'claude-mem',
+      key: '@liuhuoz/dsh-claude-mem#dsh-claude-mem',
+      locale: 'dsh-claude-mem',
     })
   })
 })

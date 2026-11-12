@@ -245,3 +245,19 @@ window.__ModuleLoader__.load({ id: "@liuhuoz/dsh-claude-mem", factory: (require)
 ```
 
 形态对照的是已在本机正常运行的 `dsh-notify-me` 与 `@michengai/dsh-code-review` 两个产物。新增 `tests/client-bundle.spec.ts`：用 `node:vm` 按宿主的方式加载产物、跑 `apply()`，产物若退回 ESM 该测试即失败。
+
+### 10.2 插件标识统一为 `dsh-claude-mem`
+
+原先两套叫法并存：包名是 `@liuhuoz/dsh-claude-mem`，而行 id 与 cordis 插件名是 `claude-mem`（两者都来自上游首个提交 `32ec6bd`）。统一为：
+
+| 位置 | 旧 | 新 |
+|---|---|---|
+| `cordis.patch.yml` 行 id | `claude-mem` | `dsh-claude-mem` |
+| `src/index.ts` 插件名 | `claude-mem` | `dsh-claude-mem` |
+| `src/client/index.ts` 插件名 | `claude-mem-client` | `dsh-claude-mem-client` |
+| 客户端 locale 命名空间 | `claude-mem` | `dsh-claude-mem` |
+| 配置页 slot key 后缀 | `#claude-mem` | `#dsh-claude-mem` |
+
+**没有改**的两处，因为它们指的不是插件：`src/hooks.ts` 的 `'claude-mem'` 是 PATH 上的可执行文件名回退值；`{ kind: 'claude-mem' }` 是注入消息的来源标记。
+
+迁移代价：profile 里已有的行（`~/.dsh/profiles/desktop/cordis.patch.yml`）必须同步改 id，否则该行会变成找不到同名 bundle 行的孤儿，配置失效。发布给他人前应作为不兼容变更处理。

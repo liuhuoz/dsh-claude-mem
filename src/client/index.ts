@@ -13,7 +13,7 @@ import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { ClaudeMemPage } from './page.js'
 import { en, zh } from './messages.js'
 
-export const name = 'claude-mem-client'
+export const name = 'dsh-claude-mem-client'
 
 /** Services this half needs before it can register anything. */
 export const inject = ['slots', 'locale']
@@ -22,7 +22,10 @@ export const inject = ['slots', 'locale']
 export const PACKAGE = '@liuhuoz/dsh-claude-mem'
 
 /** The row id the bundle patch declares for the claude-mem entry. */
-export const ROW_ID = 'claude-mem'
+export const ROW_ID = 'dsh-claude-mem'
+
+/** Dictionary namespace this half registers and renders the page with. */
+export const LOCALE = 'dsh-claude-mem'
 
 /**
  * The two services this half consumes. The framework provides `slots` as a
@@ -38,11 +41,11 @@ interface ClientSeat extends SlotCore {
 /** Register the locale dictionaries and the row configuration page. */
 export function apply(ctx: Context): void {
   const { slots, locale } = ctx as Context & { slots: ClientSeat; locale: LocaleRuntime }
-  ctx.effect(() => locale.register('claude-mem', 'en', { ...en }))
-  ctx.effect(() => locale.register('claude-mem', 'zh', { ...zh }))
+  ctx.effect(() => locale.register(LOCALE, 'en', { ...en }))
+  ctx.effect(() => locale.register(LOCALE, 'zh', { ...zh }))
   slots.inject('plugins.row.config', () => slots.register({
     name: 'plugins.row.config',
     key: `${PACKAGE}#${ROW_ID}`,
-    locale: 'claude-mem',
+    locale: LOCALE,
   }, ClaudeMemPage))
 }

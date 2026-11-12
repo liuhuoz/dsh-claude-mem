@@ -5,7 +5,7 @@
 # read-only against existing memory; patch this row to enable them.
 
 - insert:
-    - id: claude-mem
+    - id: dsh-claude-mem
       name: '@liuhuoz/dsh-claude-mem'
       config:
         timeoutMs: 30000

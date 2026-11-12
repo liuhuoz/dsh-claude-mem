@@ -22,7 +22,7 @@ import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
 
-export const name = 'claude-mem'
+export const name = 'dsh-claude-mem'
 export const inject = ['tools', 'skills']
 
 /**
