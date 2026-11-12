@@ -22,6 +22,7 @@ import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
 import { resolveSettings, type LiveSettings } from './settings.js'
+import { registerHealthBridge } from './bridge.js'
 
 export const name = 'dsh-claude-mem'
 export const inject = ['tools', 'skills']
@@ -90,6 +91,7 @@ export function apply(ctx: Context, config: unknown): void {
     timeoutMs: initial.timeoutMs,
   })
   applyMemoryHooks(ctx, worker, current)
+  registerHealthBridge(ctx)
 }
 
 function assertPositiveInteger(field: string, value: number): void {

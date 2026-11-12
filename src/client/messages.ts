@@ -21,7 +21,9 @@ export const en = {
   behaviorTitle: 'Behaviour',
   injectContext: 'Inject memory context at session start',
   ingest: 'Record tool calls as memory',
+  ingestHint: 'Every observed tool result goes to claude-mem’s observer model and becomes one memory.',
   summarize: 'Write a session summary when a turn ends',
+  summarizeHint: 'Asks the model for a summary at the end of every turn.',
   autoStartWorker: 'Start the worker when it is not running',
   advancedTitle: 'Advanced',
   toolFilter: 'Observed tools',
@@ -37,7 +39,7 @@ export const en = {
   probeUnhealthy: 'Reachable, but the worker reports “{status}”',
   probeHttp: 'The service answered HTTP {status}',
   probeNotWorker: 'Something answered, but it is not the claude-mem worker',
-  probeUnreachable: 'Could not reach the worker (not running, wrong port, or blocked by the browser)',
+  probeUnreachable: 'Could not reach the worker (not running, or the wrong port)',
   unavailable: 'This page is unavailable until the plugin configuration loads.',
 } as const
 
@@ -58,7 +60,9 @@ export const zh: Record<MessageKey, string> = {
   behaviorTitle: '行为',
   injectContext: '会话开始时注入记忆上下文',
   ingest: '观察工具调用并写入记忆',
+  ingestHint: '每条被观察的工具结果都会交给 claude-mem 的观察者模型，成为一条记忆。',
   summarize: '回合结束时生成会话摘要',
+  summarizeHint: '每轮结束都会请模型总结一次本次会话。',
   autoStartWorker: 'worker 未运行时自动拉起',
   advancedTitle: '高级',
   toolFilter: '观察白名单',
@@ -74,7 +78,7 @@ export const zh: Record<MessageKey, string> = {
   probeUnhealthy: '能连上，但 worker 自报状态“{status}”',
   probeHttp: '服务返回 HTTP {status}',
   probeNotWorker: '有服务在响应，但不是 claude-mem worker',
-  probeUnreachable: '连不上 worker（未启动、端口不对，或被浏览器拦截）',
+  probeUnreachable: '连不上 worker（未启动，或端口不对）',
   unavailable: '插件配置加载完成前此页不可用。',
 }
 

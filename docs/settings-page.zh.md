@@ -295,3 +295,25 @@ function volatileForm(schema) {
 - `hooks.ts` 由“注册时读取配置”改为“每次钩子触发时读取”；`ingest`/`summarize` 的监听器改为**始终注册**、在回调内判断开关，否则页面上的开关拨不动行为。
 - `WorkerClient` 的 `baseUrl` 接受 `string | () => string`，从而地址改动立即对后续请求生效。
 - `tests/settings.spec.ts` 断言两件事：`resolveSettings` 能解包单元格；序列化后的 schema 里那 7 个字段都带 `meta.volatile`。后者正是这次事故的回归护栏。
+
+### 10.4 连接检测改走宿主代理
+
+页面能打开了，但“测试连接”始终失败，而 worker 明明在跑。
+
+实测：
+
+| 请求来源 | `GET /api/health` |
+|---|---|
+| 无 Origin（curl） | 200 |
+| `Origin: http://127.0.0.1:2385` | 200 |
+| `Origin: dsh-app://app` | **403** |
+
+桌面端渲染进程的页面 origin 是 **`dsh-app://app`**（插件脚本 URL 也是 `dsh-app://app/plugins/...`），属于非 loopback，被 claude-mem 的 origin allowlist 拒绝。之前验证“浏览器可直连”时我用的是 `http://127.0.0.1:*` 来源——那是独立 web GUI 的情形，桌面端根本走不到。
+
+改法（与 `dsh-free-search` 同一套机制）：插件在宿主侧注册一条路由，页面改为同源请求。
+
+- `src/bridge.ts`：`ctx.inject(['webServer'], …)` → `webServer.register({ kind: 'exact', path, handler })`，宿主侧 `fetch` worker 的 `/api/health` 后把结果回给页面。
+- 路由 `GET /api/dsh-claude-mem/health?baseUrl=…`：因为页面要测**未保存的草稿**，目标由调用方给出，所以**只允许 loopback**（`127.0.0.1` / `localhost` / `[::1]`，仅 http(s)），否则 400。这条 allowlist 是防止宿主替任意地址发请求的唯一防线，`tests/bridge.spec.ts` 覆盖了它。
+- 页面不再直接 `fetch` worker：桌面端做不到，web GUI 能但也一并走同一路径，避免两套行为。
+
+顺带修的界面问题：`Switch` 的 `label` 只作无障碍名称，不渲染可见文字，所以四个开关原本没有文字。现在每个开关旁边渲染标签，`ingest` / `summarize` 下面各加一行说明（两者都会产生模型调用）。

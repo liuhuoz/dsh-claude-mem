@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, DisclosureRow, Input, StateDot, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import { healthUrl, parseHealth, readHealth } from '../probe.js'
+import { HEALTH_BRIDGE_PATH, parseHealth, readHealth } from '../probe.js'
 import type { MessageKey } from './messages.js'
 
 /** Translation seat this page renders with. */
@@ -51,6 +51,8 @@ const layout = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 },
   status: { display: 'flex', alignItems: 'center', gap: 6 },
   actions: { display: 'flex', alignItems: 'center', gap: 8 },
+  switchRow: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' },
+  hint: { opacity: 0.7, paddingLeft: 44, marginTop: -4 },
   title: { margin: 0, fontSize: 13, fontWeight: 600 },
   label: { display: 'block', marginBottom: 4 },
 } as const
@@ -143,12 +145,32 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
     const base = draft.baseUrl.trim().length > 0 ? draft.baseUrl.trim() : DEFAULT_BASE_URL
     setProbe({ kind: 'ongoing' })
     try {
-      const response = await fetch(healthUrl(base), { headers: { accept: 'application/json' } })
+      // The worker itself refuses this page's origin (the desktop renderer runs on
+      // `dsh-app://app`, which its allowlist rejects), so the probe goes through
+      // the plugin's host route and answers on this page's own origin.
+      const response = await fetch(`${HEALTH_BRIDGE_PATH}?baseUrl=${encodeURIComponent(base)}`, {
+        headers: { accept: 'application/json' },
+      })
       if (!response.ok) {
         setProbe({ kind: 'error', text: t('probeHttp', { status: String(response.status) }) })
         return
       }
-      const health = parseHealth(await response.json().catch(() => undefined))
+      const payload = await response.json() as {
+        ok?: boolean
+        body?: unknown
+        code?: string
+        status?: number
+      }
+      if (payload.ok !== true) {
+        setProbe({
+          kind: 'error',
+          text: payload.code === 'http'
+            ? t('probeHttp', { status: String(payload.status ?? '?') })
+            : t('probeUnreachable'),
+        })
+        return
+      }
+      const health = parseHealth(payload.body)
       if (health === undefined) {
         setProbe({ kind: 'error', text: t('probeNotWorker') })
         return
@@ -239,30 +261,44 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
 
       <section style={layout.section}>
         <h3 style={layout.title}>{t('behaviorTitle')}</h3>
-        <Switch
-          checked={draft.injectContext}
-          disabled={!writable}
-          label={t('injectContext')}
-          onChange={next => update('injectContext', next)}
-        />
-        <Switch
-          checked={draft.ingest}
-          disabled={!writable}
-          label={t('ingest')}
-          onChange={next => update('ingest', next)}
-        />
-        <Switch
-          checked={draft.summarize}
-          disabled={!writable}
-          label={t('summarize')}
-          onChange={next => update('summarize', next)}
-        />
-        <Switch
-          checked={draft.autoStartWorker}
-          disabled={!writable}
-          label={t('autoStartWorker')}
-          onChange={next => update('autoStartWorker', next)}
-        />
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.injectContext}
+            disabled={!writable}
+            label={t('injectContext')}
+            onChange={next => update('injectContext', next)}
+          />
+          <span>{t('injectContext')}</span>
+        </label>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.ingest}
+            disabled={!writable}
+            label={t('ingest')}
+            onChange={next => update('ingest', next)}
+          />
+          <span>{t('ingest')}</span>
+        </label>
+        <span style={layout.hint}>{t('ingestHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.summarize}
+            disabled={!writable}
+            label={t('summarize')}
+            onChange={next => update('summarize', next)}
+          />
+          <span>{t('summarize')}</span>
+        </label>
+        <span style={layout.hint}>{t('summarizeHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.autoStartWorker}
+            disabled={!writable}
+            label={t('autoStartWorker')}
+            onChange={next => update('autoStartWorker', next)}
+          />
+          <span>{t('autoStartWorker')}</span>
+        </label>
       </section>
 
       <DisclosureRow

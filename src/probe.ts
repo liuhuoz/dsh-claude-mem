@@ -36,6 +36,16 @@ export function healthUrl(baseUrl: string): string {
 }
 
 /**
+ * Host route the browser half calls instead of the worker directly.
+ *
+ * The desktop renderer's page origin is `dsh-app://app`, which claude-mem's
+ * origin allowlist rejects with 403 — the browser cannot reach the worker from
+ * there. This route runs in the same process as the plugin, so the check keeps
+ * working wherever the page is served from.
+ */
+export const HEALTH_BRIDGE_PATH = '/api/dsh-claude-mem/health'
+
+/**
  * Narrow an untrusted `/api/health` body. Returns `undefined` when the body is
  * not a health payload at all, so a proxy or a foreign service on the same port
  * is reported as "not the worker" instead of "the worker is unhealthy".
