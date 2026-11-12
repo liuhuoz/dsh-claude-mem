@@ -12,24 +12,29 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type {} from '@deepseek-ai/dsh-skill'
 import { WorkerClient } from './worker.js'
 import { applyMemoryTools } from './tools.js'
 import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
+import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
 
 export const name = 'claude-mem'
 export const inject = ['tools', 'skills']
 
-/** Default worker port: `37700 + uid % 100`, matching claude-mem's worker HTTP-API port derivation. */
-function defaultWorkerPort(): number {
-  const uid = typeof process.getuid === 'function' ? process.getuid() : 0
-  return 37700 + uid % 100
-}
-
-function defaultBaseUrl(): string {
-  const explicit = process.env.DSH_MEM_BASE_URL
-  return (explicit !== undefined && explicit.length > 0 ? explicit : `http://127.0.0.1:${defaultWorkerPort()}`).replace(/\/+$/, '')
+/**
+ * Port the worker published in `~/.claude-mem/worker.pid`. The plugin only ever
+ * *finds* the worker; claude-mem decides where it listens.
+ */
+function publishedWorkerPort(): number | undefined {
+  try {
+    return parseWorkerPid(readFileSync(join(homedir(), '.claude-mem', 'worker.pid'), 'utf8'))
+  } catch {
+    return undefined
+  }
 }
 
 /** Plugin configuration. */
@@ -52,6 +57,10 @@ export interface Config {
   summarize?: boolean
   /** Tool names observed for ingestion (only when `ingest` is true). */
   toolFilter?: { names?: string[] }
+  /** Hook launcher executable. Empty = `$DSH_MEM_HOOK_BIN`, then the platform default. */
+  hookPath?: string
+  /** Start a worker when none is running. Defaults to true. */
+  autoStartWorker?: boolean
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -66,6 +75,8 @@ export const Config: Schema<Config> = Schema.object({
   toolFilter: Schema.object({
     names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash']),
   }).default({ names: ['read', 'write', 'edit', 'bash'] }),
+  hookPath: Schema.string().default(''),
+  autoStartWorker: Schema.boolean().default(true),
 })
 
 type ResolvedConfig = Config & {
@@ -78,6 +89,8 @@ type ResolvedConfig = Config & {
   ingest: boolean
   summarize: boolean
   toolFilter: { names: string[] }
+  hookPath: string
+  autoStartWorker: boolean
 }
 
 /** Mount the worker client, the model-facing tools plus the mem-search skill, and the lifecycle hooks. */
@@ -86,7 +99,7 @@ export function apply(ctx: Context, config: Config): void {
   assertPositiveInteger('timeoutMs', resolved.timeoutMs)
 
   const worker = new WorkerClient({
-    baseUrl: (resolved.baseUrl !== '' ? resolved.baseUrl : defaultBaseUrl()).replace(/\/+$/, ''),
+    baseUrl: resolveBaseUrl(resolved.baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()),
     timeoutMs: resolved.timeoutMs,
     dedupe: resolved.dedupe,
   })
@@ -102,6 +115,8 @@ export function apply(ctx: Context, config: Config): void {
     ingest: resolved.ingest,
     summarize: resolved.summarize,
     toolFilter: resolved.toolFilter,
+    hookPath: resolved.hookPath,
+    autoStartWorker: resolved.autoStartWorker,
   })
 }
 

@@ -21,6 +21,10 @@ export interface HooksConfig {
   ingest: boolean
   summarize: boolean
   toolFilter: { names: string[] }
+  /** Explicit hook launcher path; empty falls back to the environment, then the platform default. */
+  hookPath?: string
+  /** Whether a missing worker may be started. Defaults to true. */
+  autoStartWorker?: boolean
 }
 
 /** Untyped listener registration: the `agent/*` event map is version-dependent. */
@@ -34,12 +38,13 @@ let workerBootAt = 0
  * spawns one when none is running. Throttled so a down worker cannot make
  * every tool call spawn a launcher.
  */
-function ensureWorkerStarted(): void {
+function ensureWorkerStarted(config: HooksConfig): void {
+  if (config.autoStartWorker === false) return
   const now = Date.now()
   if (now - workerBootAt < 60_000) return
   workerBootAt = now
   try {
-    const child = spawn(hookLauncher(), ['start'], { stdio: 'ignore', detached: true, windowsHide: true })
+    const child = spawn(hookLauncher(config), ['start'], { stdio: 'ignore', detached: true, windowsHide: true })
     child.on('error', () => {})
     child.unref()
   } catch {
@@ -48,7 +53,9 @@ function ensureWorkerStarted(): void {
 }
 
 /** claude-mem's hook launcher: the same entry Claude Code runs for PostToolUse. */
-function hookLauncher(): string {
+function hookLauncher(config: HooksConfig): string {
+  const configured = config.hookPath
+  if (configured !== undefined && configured.trim().length > 0) return configured.trim()
   const explicit = process.env.DSH_MEM_HOOK_BIN
   if (explicit !== undefined && explicit.length > 0) return explicit
   if (process.platform === 'win32') {
@@ -72,7 +79,7 @@ function hookToolName(name: string): string {
  * launcher runs the observer model, produces a semantic observation, and
  * attributes it to the real content session.
  */
-function recordToolUse(exec: ToolExecution, agent: Agent, text: string): void {
+function recordToolUse(exec: ToolExecution, agent: Agent, text: string, config: HooksConfig): void {
   const header = agent.session.header
   const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
   const payload = {
@@ -85,17 +92,17 @@ function recordToolUse(exec: ToolExecution, agent: Agent, text: string): void {
     tool_response: { content: [{ type: 'text', text }], is_error: false },
   }
   try {
-    const child = spawn(hookLauncher(), ['hook', 'claude-code', 'observation'], {
+    const child = spawn(hookLauncher(config), ['hook', 'claude-code', 'observation'], {
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,
     })
     child.on('error', () => {
-      ensureWorkerStarted()
+      ensureWorkerStarted(config)
     })
     child.stdin.on('error', () => {})
     child.stdin.end(JSON.stringify(payload))
   } catch {
-    ensureWorkerStarted()
+    ensureWorkerStarted(config)
   }
 }
 
@@ -127,13 +134,13 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
   worker
     .sessionInit({ contentSessionId: agent.session.id, project, prompt: text, ...platform(config) })
     .catch(() => {
-      ensureWorkerStarted()
+      ensureWorkerStarted(config)
     })
 }
 
 /** Attach the memory lifecycle hooks to their extension points. */
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, config: HooksConfig): void {
-  ensureWorkerStarted()
+  ensureWorkerStarted(config)
 
   const on = ctx.on.bind(ctx) as unknown as OnAny
 
@@ -183,7 +190,7 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, config: Ho
   } catch {
     // Context seeding is best-effort: an unavailable worker must not block the
     // first turn. The worker being down is reported by the mem_* tools instead.
-    ensureWorkerStarted()
+    ensureWorkerStarted(config)
   }
 }
 
@@ -194,7 +201,7 @@ function observeToolResult(exec: ToolExecution, result: Readonly<ToolExecutionRe
   if (agent === undefined) return
   const text = resultContentText(result.content)
   if (text.length === 0) return
-  recordToolUse(exec, agent, text)
+  recordToolUse(exec, agent, text, config)
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, config: HooksConfig): Promise<void> {
@@ -203,7 +210,7 @@ async function summarizeSession(worker: WorkerClient, agent: Agent, config: Hook
     await worker.sessionSummarize({ contentSessionId: agent.session.id, project, ...platform(config) })
   } catch {
     // Summarization is best-effort.
-    ensureWorkerStarted()
+    ensureWorkerStarted(config)
   }
 }
 
