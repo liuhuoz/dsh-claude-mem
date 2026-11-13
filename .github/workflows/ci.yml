@@ -22,4 +22,7 @@ jobs:
       # and avoids resolving not-yet-published transitive peers (dsh-type-meta).
       - run: pnpm install --config.auto-install-peers=false
       - run: pnpm run build
+      # The browser half is excluded from the host tsconfig, so `build` does not
+      # typecheck it; only its built output is exercised by the tests.
+      - run: pnpm run typecheck:client
       - run: pnpm test

@@ -10,12 +10,12 @@ Cross-session memory for [DeepSeek Harness](https://github.com/deepseek-ai): a n
 
 English · [中文](README.zh-CN.md)
 
-> Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem). This fork targets DSH 0.2.x, starts the claude-mem worker when DSH loads, and records tool use through claude-mem's own PostToolUse pipeline.
+> Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem). This fork targets DSH 0.2.x, starts the claude-mem worker when DSH loads, records tool use through claude-mem's own PostToolUse pipeline, and adds a configuration page inside DSH.
 
 ## Requirements
 
 - DSH ≥ 0.2.1
-- [claude-mem](https://github.com/thedotmack/claude-mem) 15.x (tested on 15.12.0), with `claude-mem` on `PATH`. The worker is started for you.
+- [claude-mem](https://github.com/thedotmack/claude-mem) 15.x (tested on 15.17.0), with `claude-mem` on `PATH`. The worker is started for you.
 
 ## Install
 
@@ -33,4 +33,13 @@ pnpm will not run a git dependency's build script until it is allowed: the first
 
 ## Settings
 
-Recording tool use and summarizing sessions are switches in the plugin settings page (`ingest` / `summarize`).
+Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Configure**.
+
+| Setting | What it controls |
+|---|---|
+| Worker address | Where the worker listens. Empty uses the address it publishes in `~/.claude-mem/worker.pid`. **Test connection** asks the worker's `/api/health`. |
+| Launcher | The `claude-mem` executable used to record observations. Empty uses `claude-mem` on `PATH`. |
+| Start the worker | Whether the plugin starts a worker when none is running. |
+| Record tool calls | Send every observed tool result through claude-mem's observer. |
+| Summarize turns | Write a session summary when a turn ends. |
+| Observed tools | Which tools the previous switch watches (advanced). |

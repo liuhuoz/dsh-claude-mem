@@ -10,12 +10,12 @@
 
 [English](README.md) · 中文
 
-> Fork 自 [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem)。本仓库面向 DSH 0.2.x，会在 DSH 加载时启动 claude-mem worker，并把工具调用交给 claude-mem 自己的 PostToolUse 管线记录。
+> Fork 自 [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem)。本仓库面向 DSH 0.2.x，会在 DSH 加载时启动 claude-mem worker，把工具调用交给 claude-mem 自己的 PostToolUse 管线记录，并在 DSH 内提供配置页面。
 
 ## 前置条件
 
 - DSH ≥ 0.2.1
-- [claude-mem](https://github.com/thedotmack/claude-mem) 15.x（在 15.12.0 上验证），且 `claude-mem` 在 `PATH` 上。worker 由插件负责启动。
+- [claude-mem](https://github.com/thedotmack/claude-mem) 15.x（在 15.17.0 上验证），且 `claude-mem` 在 `PATH` 上。worker 由插件负责启动。
 
 ## 安装
 
@@ -33,4 +33,13 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 
 ## 设置
 
-记录工具调用与会话总结，在插件设置页里开关（`ingest` / `summarize`）。
+全部在插件自己的页面里：**插件 → dsh-claude-mem → 配置**。
+
+| 设置项 | 作用 |
+|---|---|
+| worker 地址 | worker 监听的地址。留空则使用它在 `~/.claude-mem/worker.pid` 里公布的地址。「测试连接」直接询问 worker 的 `/api/health`。 |
+| 启动器 | 记录观察所用的 `claude-mem` 可执行文件。留空则使用 `PATH` 上的 `claude-mem`。 |
+| worker 未运行时自动拉起 | 没有 worker 在跑时，是否由插件启动一个。 |
+| 观察工具调用 | 把每条被观察的工具结果交给 claude-mem 的观察者。 |
+| 回合结束时生成会话摘要 | 每轮结束时写一次会话摘要。 |
+| 观察白名单 | 上一个开关作用于哪些工具（高级）。 |
