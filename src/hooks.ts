@@ -142,21 +142,15 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
-    const settings = getSettings()
-    if (!settings.injectContext) return
     if (isSubagent(agent)) return
-    void seedSessionContext(worker, agent, settings)
+    void seedSessionContext(worker, agent, getSettings())
   })
 
   on('agent/pre-step', (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
-    const settings = getSettings()
-    // Session registration and prompt capture exist only to support ingestion
-    // and summarization: `sessionInit` writes an sdk_sessions row and the prompt
-    // text, which shows up in claude-mem's viewer. With both switches off the
-    // plugin is a read-only client and must not write those rows.
-    if (settings.ingest || settings.summarize) {
-      recordPrompt(worker, payload.agent, payload.messages, settings)
-    }
+    // Session registration and prompt capture are not optional: the row is what
+    // gives an observation its context, and claude-mem exposes no switch for it
+    // either. Only observation and summarization are switchable, here and there.
+    recordPrompt(worker, payload.agent, payload.messages, getSettings())
     return next()
   })
 

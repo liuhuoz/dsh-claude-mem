@@ -55,6 +55,13 @@ function publishedWorkerPort(): number | undefined {
  * take effect without remounting the plugin. Without that marker the settings
  * service projects no form for this namespace and the page has nothing to show.
  * Those values are read through `resolveSettings()` at the moment they are used.
+ *
+ * Only the two capture stages claude-mem itself lets a user switch off are
+ * configurable here (`DISABLE_OBSERVATION` / `DISABLE_SUMMARY`). Session
+ * registration, prompt capture and session-start injection always happen:
+ * without them the plugin would not be doing its job, so a switch for them
+ * would be a false choice.
+ *
  * `timeoutMs`, `dedupe`, `project` and `platformSource` stay plain, so changing
  * them still needs a reload.
  */
@@ -64,9 +71,8 @@ export const Config = Schema.object({
   dedupe: Schema.boolean().default(true),
   platformSource: Schema.string().default(''),
   project: Schema.string().default(''),
-  injectContext: Schema.boolean().default(true).volatile(),
-  ingest: Schema.boolean().default(false).volatile(),
-  summarize: Schema.boolean().default(false).volatile(),
+  ingest: Schema.boolean().default(true).volatile(),
+  summarize: Schema.boolean().default(true).volatile(),
   toolFilter: Schema.object({
     names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash']),
   }).default({ names: ['read', 'write', 'edit', 'bash'] }).volatile(),

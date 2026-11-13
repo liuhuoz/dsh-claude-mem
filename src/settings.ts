@@ -16,7 +16,6 @@ export interface LiveSettings {
   readonly project: string
   readonly platformSource: string
   readonly hookPath: string
-  readonly injectContext: boolean
   readonly ingest: boolean
   readonly summarize: boolean
   readonly autoStartWorker: boolean
@@ -31,9 +30,8 @@ const DEFAULTS = {
   project: '',
   platformSource: '',
   hookPath: '',
-  injectContext: true,
-  ingest: false,
-  summarize: false,
+  ingest: true,
+  summarize: true,
   autoStartWorker: true,
   timeoutMs: 30_000,
   dedupe: true,
@@ -88,7 +86,6 @@ export function resolveSettings(raw: unknown): LiveSettings {
     project: readText(source.project, DEFAULTS.project),
     platformSource: readText(source.platformSource, DEFAULTS.platformSource),
     hookPath: readText(source.hookPath, DEFAULTS.hookPath),
-    injectContext: readFlag(source.injectContext, DEFAULTS.injectContext),
     ingest: readFlag(source.ingest, DEFAULTS.ingest),
     summarize: readFlag(source.summarize, DEFAULTS.summarize),
     autoStartWorker: readFlag(source.autoStartWorker, DEFAULTS.autoStartWorker),

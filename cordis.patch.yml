@@ -1,15 +1,18 @@
 # dsh-claude-mem bundle patch: mount the claude-mem integration over dsh-base.
 # The single plugin row registers the worker client, the model-facing memory
-# tools plus the mem-search skill, and the lifecycle hooks. Injections and
-# ingestion/summarization are opt-in (off here), so a plain install is
-# read-only against existing memory; patch this row to enable them.
+# tools plus the mem-search skill, and the lifecycle hooks.
+#
+# Mounting the plugin means recording: session registration, prompt capture and
+# session-start context always follow claude-mem, which exposes no switch for
+# them either. The two stages it does let a user switch off — tool observations
+# and turn summaries — default to on here as well; turn them off from the
+# plugin's own configuration page.
 
 - insert:
     - id: dsh-claude-mem
       name: '@liuhuoz/dsh-claude-mem'
       config:
         timeoutMs: 30000
-        # dedupe: true   # (default) collapse duplicate observations in query results
-        injectContext: true
-        ingest: false
-        summarize: false
+        # dedupe: true    # (default) collapse duplicate observations in query results
+        # ingest: true    # (default) record tool observations into memory
+        # summarize: true # (default) write a session summary when a turn ends

@@ -12,17 +12,15 @@ describe('resolveSettings', () => {
     const settings = resolveSettings({
       baseUrl: 'http://127.0.0.1:37777',
       hookPath: 'C:/claude-mem.exe',
-      injectContext: false,
-      ingest: true,
-      summarize: true,
+      ingest: false,
+      summarize: false,
       autoStartWorker: false,
       toolFilter: { names: ['read', 'bash'] },
     })
     expect(settings.baseUrl).toBe('http://127.0.0.1:37777')
     expect(settings.hookPath).toBe('C:/claude-mem.exe')
-    expect(settings.injectContext).toBe(false)
-    expect(settings.ingest).toBe(true)
-    expect(settings.summarize).toBe(true)
+    expect(settings.ingest).toBe(false)
+    expect(settings.summarize).toBe(false)
     expect(settings.autoStartWorker).toBe(false)
     expect(settings.toolFilter.names).toEqual(['read', 'bash'])
   })
@@ -31,37 +29,36 @@ describe('resolveSettings', () => {
     const settings = resolveSettings({
       baseUrl: cell('http://127.0.0.1:41000'),
       hookPath: cell('C:/other.exe'),
-      injectContext: cell(false),
-      ingest: cell(true),
+      ingest: cell(false),
       summarize: cell(true),
       autoStartWorker: cell(false),
       toolFilter: cell({ names: cell(['edit']) }),
     })
     expect(settings.baseUrl).toBe('http://127.0.0.1:41000')
     expect(settings.hookPath).toBe('C:/other.exe')
-    expect(settings.injectContext).toBe(false)
-    expect(settings.ingest).toBe(true)
+    expect(settings.ingest).toBe(false)
+    expect(settings.summarize).toBe(true)
     expect(settings.autoStartWorker).toBe(false)
     expect(settings.toolFilter.names).toEqual(['edit'])
   })
 
-  it('falls back to the schema defaults for missing or empty values', () => {
+  it('falls back to the schema defaults for missing values', () => {
     const settings = resolveSettings({})
     expect(settings.baseUrl).toBe('')
     expect(settings.hookPath).toBe('')
-    expect(settings.injectContext).toBe(true)
-    expect(settings.ingest).toBe(false)
-    expect(settings.summarize).toBe(false)
+    // Both capture stages default to on, matching claude-mem's own behaviour.
+    expect(settings.ingest).toBe(true)
+    expect(settings.summarize).toBe(true)
     expect(settings.autoStartWorker).toBe(true)
     expect(settings.timeoutMs).toBe(30_000)
     expect(settings.dedupe).toBe(true)
     expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
   })
 
-  it('treats a cell still holding nothing as unset', () => {
+  it('falls back to the default when a cell still holds nothing', () => {
     const settings = resolveSettings({ baseUrl: cell(undefined), ingest: cell(undefined) })
     expect(settings.baseUrl).toBe('')
-    expect(settings.ingest).toBe(false)
+    expect(settings.ingest).toBe(true)
   })
 
   it('keeps the default tool list when the filter is empty or malformed', () => {
@@ -96,7 +93,7 @@ describe('Config schema', () => {
    * shipped as "unavailable".
    */
   it('marks every field the page edits as volatile', () => {
-    const pageFields = ['baseUrl', 'hookPath', 'injectContext', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter']
+    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter']
     for (const field of pageFields) {
       expect(nodeOf(field)?.meta?.volatile, `${field} must be volatile`).toBe(true)
     }
@@ -105,6 +102,17 @@ describe('Config schema', () => {
   it('leaves reload-scoped fields plain', () => {
     for (const field of ['timeoutMs', 'dedupe', 'project', 'platformSource']) {
       expect(nodeOf(field)?.meta?.volatile, `${field} must stay plain`).toBeFalsy()
+    }
+  })
+
+  /**
+   * Session registration, prompt capture and context injection are fixed
+   * behaviour, not settings: claude-mem exposes no switch for them, and a switch
+   * here would promise a choice the plugin cannot honour.
+   */
+  it('has no switch for the stages claude-mem always performs', () => {
+    for (const field of ['injectContext', 'capturePrompt']) {
+      expect(root?.dict?.[field], `${field} must not be a setting`).toBeUndefined()
     }
   })
 })

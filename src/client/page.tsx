@@ -29,7 +29,6 @@ export interface ClaudeMemPageProps {
 interface Draft {
   baseUrl: string
   hookPath: string
-  injectContext: boolean
   ingest: boolean
   summarize: boolean
   autoStartWorker: boolean
@@ -70,7 +69,6 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
   return {
     baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : '',
     hookPath: typeof source.hookPath === 'string' ? source.hookPath : '',
-    injectContext: source.injectContext !== false,
     ingest: source.ingest === true,
     summarize: source.summarize === true,
     autoStartWorker: source.autoStartWorker !== false,
@@ -90,7 +88,6 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
   return [
     textOp('baseUrl', draft.baseUrl),
     textOp('hookPath', draft.hookPath),
-    { op: 'set', path: ['injectContext'], value: draft.injectContext },
     { op: 'set', path: ['ingest'], value: draft.ingest },
     { op: 'set', path: ['summarize'], value: draft.summarize },
     { op: 'set', path: ['autoStartWorker'], value: draft.autoStartWorker },
@@ -258,20 +255,20 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           />
           <span style={{ opacity: 0.7 }}>{t('hookPathHint')}</span>
         </label>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.autoStartWorker}
+            disabled={!writable}
+            label={t('autoStartWorker')}
+            onChange={next => update('autoStartWorker', next)}
+          />
+          <span>{t('autoStartWorker')}</span>
+        </label>
       </section>
 
       <section style={layout.section}>
         <h3 style={layout.title}>{t('behaviorTitle')}</h3>
         <span style={layout.note}>{t('behaviorNote')}</span>
-        <label style={layout.switchRow}>
-          <Switch
-            checked={draft.injectContext}
-            disabled={!writable}
-            label={t('injectContext')}
-            onChange={next => update('injectContext', next)}
-          />
-          <span>{t('injectContext')}</span>
-        </label>
         <label style={layout.switchRow}>
           <Switch
             checked={draft.ingest}
@@ -292,15 +289,6 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('summarize')}</span>
         </label>
         <span style={layout.hint}>{t('summarizeHint')}</span>
-        <label style={layout.switchRow}>
-          <Switch
-            checked={draft.autoStartWorker}
-            disabled={!writable}
-            label={t('autoStartWorker')}
-            onChange={next => update('autoStartWorker', next)}
-          />
-          <span>{t('autoStartWorker')}</span>
-        </label>
       </section>
 
       <DisclosureRow
