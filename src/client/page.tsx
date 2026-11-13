@@ -52,7 +52,6 @@ const layout = {
   actions: { display: 'flex', alignItems: 'center', gap: 8 },
   switchRow: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' },
   hint: { opacity: 0.7, paddingLeft: 44, marginTop: -4 },
-  note: { opacity: 0.7 },
   title: { margin: 0, fontSize: 13, fontWeight: 600 },
   label: { display: 'block', marginBottom: 4 },
 } as const
@@ -268,7 +267,6 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
 
       <section style={layout.section}>
         <h3 style={layout.title}>{t('behaviorTitle')}</h3>
-        <span style={layout.note}>{t('behaviorNote')}</span>
         <label style={layout.switchRow}>
           <Switch
             checked={draft.ingest}
