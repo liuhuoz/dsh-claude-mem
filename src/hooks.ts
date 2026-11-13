@@ -149,7 +149,14 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   })
 
   on('agent/pre-step', (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
-    recordPrompt(worker, payload.agent, payload.messages, getSettings())
+    const settings = getSettings()
+    // Session registration and prompt capture exist only to support ingestion
+    // and summarization: `sessionInit` writes an sdk_sessions row and the prompt
+    // text, which shows up in claude-mem's viewer. With both switches off the
+    // plugin is a read-only client and must not write those rows.
+    if (settings.ingest || settings.summarize) {
+      recordPrompt(worker, payload.agent, payload.messages, settings)
+    }
     return next()
   })
 

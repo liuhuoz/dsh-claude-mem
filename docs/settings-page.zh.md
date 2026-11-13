@@ -317,3 +317,19 @@ function volatileForm(schema) {
 - 页面不再直接 `fetch` worker：桌面端做不到，web GUI 能但也一并走同一路径，避免两套行为。
 
 顺带修的界面问题：`Switch` 的 `label` 只作无障碍名称，不渲染可见文字，所以四个开关原本没有文字。现在每个开关旁边渲染标签，`ingest` / `summarize` 下面各加一行说明（两者都会产生模型调用）。
+
+### 10.5 全关之后仍在写提示词
+
+四个开关都关掉并保存后，新会话的提示词仍然出现在 claude-mem 的 viewer 里。查 profile 确认保存是成功的（四个字段都是 `false`），查库确认写入仍在发生：
+
+```
+user_prompts 最近记录
+2026-11-13T02:25:58Z  "test"
+2026-11-13T02:26:34Z  "hi"
+```
+
+原因是 `hooks.ts` 里 `agent/pre-step` 无条件调用 `recordPrompt()`，而它最终走 `POST /api/sessions/init`，会写 `sdk_sessions` + `user_prompts`。**这条写入路径不受任何开关管辖**——四个开关里 `ingest` 管工具观察、`summarize` 管摘要、`injectContext` 管注入、`autoStartWorker` 管拉起进程，没有一个是"登记会话/记录提示词"。
+
+修复：把这步绑定到写入意图上——只有 `ingest || summarize` 为真时才登记会话，两者都关就是纯只读客户端。页面的"行为"区块加了一句说明这条规则，避免下次再让人意外。
+
+尚未纳入的同类问题：`mem_save` 工具仍然能在全关时写记忆。它是模型被明确要求"保存一条记忆"时的显式动作，不是自动行为，暂不封锁。
