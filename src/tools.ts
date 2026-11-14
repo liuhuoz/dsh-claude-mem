@@ -139,6 +139,7 @@ export function applyMemoryTools(ctx: Context, worker: WorkerClient, config: Too
   if (config.getObservations !== false) applyGetObservationsTool(ctx, worker, config.timeoutMs)
   if (config.save !== false) applySaveTool(ctx, worker, config.timeoutMs)
   if (config.context !== false) applyContextTool(ctx, worker, config.timeoutMs)
+  applyWorkStateTools(ctx, worker, config.timeoutMs)
 }
 
 function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
@@ -290,6 +291,54 @@ function applyGetObservationsTool(ctx: Context, worker: WorkerClient, timeoutMs:
         ...args.project !== undefined ? { project: args.project } : {},
       }
       return projectFullResult(await worker.getObservations(input, exec.signal)) as never
+    },
+  }))
+}
+
+function applyWorkStateTools(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
+  ctx.tools.register(defineTool({
+    name: 'work_state_write',
+    description: 'Your canonical to-do list and working state for this project, kept across sessions: whatever is still open is shown at the start of every session. Each call appends one entry to a list. To-do item: fields {"task": "<name>", "status": "todo" | "doing" | "done" | "dropped", ...details}. State on the list itself: any other fields (the latest value of each key wins; null clears a key; "status": "done" closes the list). Returns what is still open in the list. Params: list (required), fields (required).',
+    parameters: {
+      list: { type: 'string', required: true, description: 'The to-do list or tracked thing this entry belongs to, e.g. "release" or "auth-refactor".' },
+      fields: { type: 'object', additionalProperties: true, required: true, description: 'Keys to set. Include "task" to update a to-do item. Values are strings, numbers, booleans, or null to clear a key.' },
+    },
+    output: {
+      schema: { type: 'string' },
+      render: (_args, value) => [{ type: 'text', text: value }],
+    },
+    timeoutMs,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const cwd = exec.agent?.session.header.cwd
+      return await worker.workStateWrite({
+        cwd: typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd(),
+        list: args.list,
+        fields: args.fields as Record<string, unknown>,
+      }, exec.signal)
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'work_state_read',
+    description: "Read this project's to-do lists and working state written with work_state_write: every open item, or one list, with done and dropped items when includeClosed is true. Params: list, includeClosed.",
+    parameters: {
+      list: { type: 'string', description: 'Read only this list.' },
+      includeClosed: { type: 'boolean', description: 'Also show done and dropped items and closed lists.' },
+    },
+    output: {
+      schema: { type: 'string' },
+      render: (_args, value) => [{ type: 'text', text: value }],
+    },
+    timeoutMs,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const cwd = exec.agent?.session.header.cwd
+      return await worker.workState({
+        cwd: typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd(),
+        ...args.list !== undefined ? { list: args.list } : {},
+        ...args.includeClosed !== undefined ? { includeClosed: args.includeClosed } : {},
+      }, exec.signal)
     },
   }))
 }

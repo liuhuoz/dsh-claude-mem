@@ -152,6 +152,12 @@ export class WorkerClient {
     return await this.requestText('/api/work-state', query, signal)
   }
 
+  /** Append one work-state entry; the worker answers with the list's open items as text. */
+  async workStateWrite(request: { cwd: string; list: string; fields: Record<string, unknown> }, signal?: AbortSignal): Promise<string> {
+    const body = { cwd: request.cwd, list: request.list, fields: request.fields }
+    return await this.postText('/api/work-state/entries', body, signal)
+  }
+
   private async query(path: string, query: URLSearchParams, signal?: AbortSignal): Promise<MemSearchResult> {
     const raw: unknown = await this.requestJson<unknown>(path, { method: 'GET', query }, signal)
     return this.finalizeResult(normalizeQueryResult(raw))
@@ -195,6 +201,31 @@ export class WorkerClient {
       throw new MemError(`memory worker returned HTTP ${response.status}: ${text.slice(0, 500)}`, 'MEM_PROVIDER_ERROR')
     }
     return await response.json() as T
+  }
+
+  /** POST a JSON body and return the plain-text answer (work-state writes). */
+  private async postText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) throw new MemError('memory request aborted', 'MEM_ABORTED')
+    using d = deadline(signal, this.limits.timeoutMs, MEM_TIMEOUT)
+    const url = this.urlFor(path)
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        signal: d.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    } catch (error: unknown) {
+      const reason = timeoutOf(d.signal, MEM_TIMEOUT)
+      if (reason !== undefined) throw new MemError(`memory request timed out after ${reason.timeoutMs}ms`, 'MEM_TIMEOUT')
+      throw new MemError(`memory request failed: ${error instanceof Error ? error.message : String(error)}`, 'MEM_PROVIDER_ERROR')
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw new MemError(`memory worker returned HTTP ${response.status}: ${text.slice(0, 500)}`, 'MEM_PROVIDER_ERROR')
+    }
+    return await response.text()
   }
 
   private async requestText(path: string, query: URLSearchParams, signal?: AbortSignal): Promise<string> {

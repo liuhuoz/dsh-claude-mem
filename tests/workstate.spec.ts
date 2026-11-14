@@ -39,6 +39,23 @@ describe('WorkerClient.workState', () => {
   })
 })
 
+describe('WorkerClient.workStateWrite', () => {
+  it('posts the entry and returns the worker text', async () => {
+    const fetchMock = vi.fn(async (_url: unknown, _init?: unknown) =>
+      ({ ok: true, status: 200, text: async () => 'Saved to "release" in p.' }) as unknown as Response)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const client = new WorkerClient(limits)
+    const text = await client.workStateWrite({ cwd: 'D:/p', list: 'release', fields: { task: 'ship', status: 'doing' } })
+
+    expect(text).toContain('Saved to')
+    const call = fetchMock.mock.calls[0] as unknown as [string, { method: string; body: string }]
+    expect(String(call[0])).toContain('/api/work-state/entries')
+    expect(call[1].method).toBe('POST')
+    expect(JSON.parse(call[1].body)).toMatchObject({ cwd: 'D:/p', list: 'release', fields: { task: 'ship' } })
+  })
+})
+
 describe('hasOpenWorkState', () => {
   it('rejects the worker empty-state sentences', () => {
     expect(hasOpenWorkState('')).toBe(false)
