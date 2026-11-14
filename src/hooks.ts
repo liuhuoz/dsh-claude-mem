@@ -170,6 +170,14 @@ async function rehydrateWorkState(worker: WorkerClient, agent: Agent): Promise<v
   }
 }
 
+/** Injected when the work-state switch is off, so the model never calls unregistered tools. */
+export const WORK_STATE_DISABLED_NOTE = 'claude-mem work state is disabled in this project: do not call work_state_write or work_state_read. Track short-lived progress with the harness todo tool instead.'
+
+/** Append the disabled notice to the injected context when work state is switched off. */
+export function applyWorkStatePolicy(text: string, enabled: boolean): string {
+  return enabled ? text : `${text}\n\n${WORK_STATE_DISABLED_NOTE}`
+}
+
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings: SettingsSource): void {
   ensureWorkerStarted(getSettings())
 
@@ -195,6 +203,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     if (event?.type !== 'compaction/end') return
     const agent = agents.get(session.id)
     if (agent === undefined || isSubagent(agent)) return
+    if (!getSettings().workState) return
     void rehydrateWorkState(worker, agent)
   })
 
@@ -231,7 +240,7 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, settings: 
     // the producer kind is asserted here. The runtime accepts any non-empty kind
     // other than 'plugin'.
     const message: UserMessage = createUserMessage({
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text: applyWorkStatePolicy(text, settings.workState) }],
       source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
     })
     agent.inject(message)

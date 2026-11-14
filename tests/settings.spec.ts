@@ -55,6 +55,11 @@ describe('resolveSettings', () => {
     expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
   })
 
+  it('defaults work state on and unwraps its volatile cell', () => {
+    expect(resolveSettings({}).workState).toBe(true)
+    expect(resolveSettings({ workState: cell(false) }).workState).toBe(false)
+  })
+
   it('falls back to the default when a cell still holds nothing', () => {
     const settings = resolveSettings({ baseUrl: cell(undefined), ingest: cell(undefined) })
     expect(settings.baseUrl).toBe('')

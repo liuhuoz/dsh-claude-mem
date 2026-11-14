@@ -22,6 +22,7 @@ export interface ToolsConfig {
   getObservations?: boolean
   save?: boolean
   context?: boolean
+  workState?: boolean
   timeoutMs: number
 }
 
@@ -139,7 +140,7 @@ export function applyMemoryTools(ctx: Context, worker: WorkerClient, config: Too
   if (config.getObservations !== false) applyGetObservationsTool(ctx, worker, config.timeoutMs)
   if (config.save !== false) applySaveTool(ctx, worker, config.timeoutMs)
   if (config.context !== false) applyContextTool(ctx, worker, config.timeoutMs)
-  applyWorkStateTools(ctx, worker, config.timeoutMs)
+  if (config.workState !== false) applyWorkStateTools(ctx, worker, config.timeoutMs)
 }
 
 function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {

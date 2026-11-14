@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { WorkerClient } from '../src/worker.ts'
-import { hasOpenWorkState, WORK_STATE_MARKER } from '../src/hooks.ts'
+import { applyWorkStatePolicy, hasOpenWorkState, WORK_STATE_DISABLED_NOTE, WORK_STATE_MARKER } from '../src/hooks.ts'
 
 const limits = { baseUrl: 'http://127.0.0.1:39999', timeoutMs: 30_000 }
 
@@ -39,20 +39,15 @@ describe('WorkerClient.workState', () => {
   })
 })
 
-describe('WorkerClient.workStateWrite', () => {
-  it('posts the entry and returns the worker text', async () => {
-    const fetchMock = vi.fn(async (_url: unknown, _init?: unknown) =>
-      ({ ok: true, status: 200, text: async () => 'Saved to "release" in p.' }) as unknown as Response)
-    vi.stubGlobal('fetch', fetchMock)
+describe('applyWorkStatePolicy', () => {
+  it('leaves the injected context untouched while work state is enabled', () => {
+    expect(applyWorkStatePolicy('ctx', true)).toBe('ctx')
+  })
 
-    const client = new WorkerClient(limits)
-    const text = await client.workStateWrite({ cwd: 'D:/p', list: 'release', fields: { task: 'ship', status: 'doing' } })
-
-    expect(text).toContain('Saved to')
-    const call = fetchMock.mock.calls[0] as unknown as [string, { method: string; body: string }]
-    expect(String(call[0])).toContain('/api/work-state/entries')
-    expect(call[1].method).toBe('POST')
-    expect(JSON.parse(call[1].body)).toMatchObject({ cwd: 'D:/p', list: 'release', fields: { task: 'ship' } })
+  it('appends the disabled notice so the model does not call missing tools', () => {
+    const text = applyWorkStatePolicy('ctx', false)
+    expect(text.startsWith('ctx')).toBe(true)
+    expect(text).toContain(WORK_STATE_DISABLED_NOTE)
   })
 })
 

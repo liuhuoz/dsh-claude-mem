@@ -19,6 +19,7 @@ export interface LiveSettings {
   readonly ingest: boolean
   readonly summarize: boolean
   readonly autoStartWorker: boolean
+  readonly workState: boolean
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
   readonly dedupe: boolean
@@ -33,6 +34,7 @@ const DEFAULTS = {
   ingest: true,
   summarize: true,
   autoStartWorker: true,
+  workState: true,
   timeoutMs: 30_000,
   dedupe: true,
 } as const
@@ -89,6 +91,7 @@ export function resolveSettings(raw: unknown): LiveSettings {
     ingest: readFlag(source.ingest, DEFAULTS.ingest),
     summarize: readFlag(source.summarize, DEFAULTS.summarize),
     autoStartWorker: readFlag(source.autoStartWorker, DEFAULTS.autoStartWorker),
+    workState: readFlag(source.workState, DEFAULTS.workState),
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),

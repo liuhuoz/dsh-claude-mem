@@ -31,6 +31,7 @@ interface Draft {
   hookPath: string
   ingest: boolean
   summarize: boolean
+  workState: boolean
   autoStartWorker: boolean
   toolNames: string
 }
@@ -70,6 +71,7 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     hookPath: typeof source.hookPath === 'string' ? source.hookPath : '',
     ingest: source.ingest === true,
     summarize: source.summarize === true,
+    workState: source.workState !== false,
     autoStartWorker: source.autoStartWorker !== false,
     toolNames: toolNamesOf(source).join(', '),
   }
@@ -89,6 +91,7 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     textOp('hookPath', draft.hookPath),
     { op: 'set', path: ['ingest'], value: draft.ingest },
     { op: 'set', path: ['summarize'], value: draft.summarize },
+    { op: 'set', path: ['workState'], value: draft.workState },
     { op: 'set', path: ['autoStartWorker'], value: draft.autoStartWorker },
     names.length === 0 ? { op: 'unset', path: ['toolFilter'] } : { op: 'set', path: ['toolFilter', 'names'], value: names },
   ]
@@ -287,6 +290,16 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('summarize')}</span>
         </label>
         <span style={layout.hint}>{t('summarizeHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.workState}
+            disabled={!writable}
+            label={t('workState')}
+            onChange={next => update('workState', next)}
+          />
+          <span>{t('workState')}</span>
+        </label>
+        <span style={layout.hint}>{t('workStateHint')}</span>
       </section>
 
       <DisclosureRow

@@ -77,6 +77,7 @@ export const Config = Schema.object({
     names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash']),
   }).default({ names: ['read', 'write', 'edit', 'bash'] }).volatile(),
   hookPath: Schema.string().default('').volatile(),
+  workState: Schema.boolean().default(true).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })
 
@@ -95,6 +96,7 @@ export function apply(ctx: Context, config: unknown): void {
   ctx.skills.register(memSearchSkill)
   applyMemoryTools(ctx, worker, {
     timeoutMs: initial.timeoutMs,
+    workState: initial.workState,
   })
   applyMemoryHooks(ctx, worker, current)
   registerHealthBridge(ctx)
