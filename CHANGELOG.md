@@ -2,6 +2,14 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.4.0
+
+### Added
+
+- `work_state_write` and `work_state_read`: claude-mem's per-project to-do lists and working state, over the worker's HTTP API.
+- Re-injection of a project's still-open work state right after DSH compacts a session — the DSH stand-in for claude-mem's `/clear` auto-clear, which needs a command DSH does not have.
+- A `workState` setting that governs the two tools and the re-injection together; when it is off, the session-start context says the tools are unavailable.
+
 ## 0.3.0
 
 ### Added

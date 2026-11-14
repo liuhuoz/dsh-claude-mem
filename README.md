@@ -42,4 +42,5 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Start the worker | Whether the plugin starts a worker when none is running. |
 | Record tool calls | Send every observed tool result through claude-mem's observer. |
 | Summarize turns | Write a session summary when a turn ends. |
+| Work state | Keep to-do lists across sessions: the two `work_state` tools, plus re-injecting unfinished items after the context is compacted. Off hides all three. |
 | Observed tools | Which tools the previous switch watches (advanced). |
