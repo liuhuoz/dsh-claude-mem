@@ -141,6 +141,17 @@ export class WorkerClient {
     await this.requestJson<unknown>('/api/sessions/summarize', { method: 'POST', body }, signal)
   }
 
+  /**
+   * Open work state for one project, exactly as `work_state_read` renders it.
+   * The worker answers plain text, including "Nothing open ..." when nothing is open.
+   */
+  async workState(request: { cwd: string; list?: string; includeClosed?: boolean }, signal?: AbortSignal): Promise<string> {
+    const query = new URLSearchParams({ cwd: request.cwd })
+    if (request.list !== undefined) query.set('list', request.list)
+    if (request.includeClosed === true) query.set('includeClosed', 'true')
+    return await this.requestText('/api/work-state', query, signal)
+  }
+
   private async query(path: string, query: URLSearchParams, signal?: AbortSignal): Promise<MemSearchResult> {
     const raw: unknown = await this.requestJson<unknown>(path, { method: 'GET', query }, signal)
     return this.finalizeResult(normalizeQueryResult(raw))

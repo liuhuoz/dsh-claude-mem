@@ -135,15 +135,67 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
 }
 
 /** Attach the memory lifecycle hooks to their extension points. */
+/** Marker prefix for the post-compaction work-state re-injection. */
+export const WORK_STATE_MARKER = '[claude-mem] open work state'
+
+/**
+ * True only when the worker returned actual open items. An empty project answers
+ * "Nothing open for …" or "Nothing recorded …", which must not be injected.
+ */
+export function hasOpenWorkState(text: string): boolean {
+  const body = text.trim()
+  if (body.length === 0) return false
+  return !/^Nothing (open|recorded)\b/.test(body)
+}
+
+/**
+ * claude-mem's auto-clear relies on Claude Code's `/clear`. DSH has no such
+ * command — it compacts the session in place — so the stand-in is to re-inject
+ * the project's open work state as soon as a compaction commits.
+ */
+async function rehydrateWorkState(worker: WorkerClient, agent: Agent): Promise<void> {
+  const cwd = typeof agent.session.header.cwd === 'string' && agent.session.header.cwd.length > 0
+    ? agent.session.header.cwd
+    : process.cwd()
+  try {
+    const text = await worker.workState({ cwd })
+    if (!hasOpenWorkState(text)) return
+    const message: UserMessage = createUserMessage({
+      content: [{ type: 'text', text: `${WORK_STATE_MARKER}\n${text.trim()}` }],
+      source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
+    })
+    agent.inject(message)
+  } catch {
+    // Best-effort: an unavailable worker must not break the continued turn.
+  }
+}
+
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings: SettingsSource): void {
   ensureWorkerStarted(getSettings())
 
   const on = ctx.on.bind(ctx) as unknown as OnAny
 
+  /** Live agents by session id, so a session event can reach the agent to inject into. */
+  const agents = new Map<string, Agent>()
+
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
+    agents.set(agent.session.id, agent)
     if (isSubagent(agent)) return
     void seedSessionContext(worker, agent, getSettings())
+  })
+
+  on('agent/disposed', (payload: { agent?: Agent }) => {
+    if (payload.agent !== undefined) agents.delete(payload.agent.session.id)
+  })
+
+  // DSH compacts in place instead of clearing; rehydrate the open work state once
+  // the compaction commits so the continued session still sees unfinished todos.
+  on('session/event', (session: { id: string }, event: { type: string }) => {
+    if (event?.type !== 'compaction/end') return
+    const agent = agents.get(session.id)
+    if (agent === undefined || isSubagent(agent)) return
+    void rehydrateWorkState(worker, agent)
   })
 
   on('agent/pre-step', (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
