@@ -2,6 +2,17 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.4.1
+
+### Changed
+
+- `mem_search` and `mem_timeline` return the worker's rendered text as-is: the output value is a `content` string, matching claude-mem's own MCP `search` tool, which answers with a table of IDs, dates and titles. The worker never returns structured items on these two endpoints, so the old `items` field was always empty.
+- The `mem_timeline` schema no longer claims a field the worker cannot fill.
+
+### Removed
+
+- The `items` field from both tools' output schema. Breaking for a caller that read structured results; the text was always the only real payload.
+
 ## 0.4.0
 
 ### Added
