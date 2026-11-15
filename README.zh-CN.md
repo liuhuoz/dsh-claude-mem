@@ -44,3 +44,27 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 | 回合结束时生成会话摘要 | 每轮结束时写一次会话摘要。 |
 | 跨会话待办 | 跨会话保存待办与工作状态：两个 `work_state` 工具，以及上下文压缩后重新注入未完成项。关闭则三者一起隐藏。 |
 | 观察白名单 | 上一个开关作用于哪些工具（高级）。 |
+
+## 路线图
+
+### MCP 工具
+
+- [x] **Work state** — `work_state_write` / `work_state_read`，以及 claude-mem **auto-clear** 在 DSH 下的替代实现：上下文压缩后重新注入未完成项（0.4.0）。
+- [ ] `dumb_search` — 不做推理的标题词匹配检索，快但浅。
+- [ ] `get_tool_uses` — 按 id 取回工具调用的原始 `tool_input` / `tool_response`。
+- [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter 符号搜索、文件结构大纲、符号展开。
+- [ ] `corpora` — 构建、prime、查询、重建、重新 prime、列出知识库。
+
+### Hooks
+
+- [ ] **file-context** — 在 `Read` / `Bash` / `Grep` / `Glob` 之前注入与该文件相关的观察。DSH 的 `tools/pre-execute` 只返回 allow / deny / cancel / ask，所以要额外做注入通道（或改成 `mem_file_context` 工具）。
+- [ ] **session-end / subagent-stop** — 会话或子代理结束时归档并总结。
+
+### 不计划
+
+- TeamBrain
+- 服务端 `observation_*` 工具
+- My Work 面板与交付物
+- stats / export / admin 这些路由
+- claude-mem 自带的 skills 与 modes
+

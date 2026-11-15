@@ -44,3 +44,27 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Summarize turns | Write a session summary when a turn ends. |
 | Work state | Keep to-do lists across sessions: the two `work_state` tools, plus re-injecting unfinished items after the context is compacted. Off hides all three. |
 | Observed tools | Which tools the previous switch watches (advanced). |
+
+## Roadmap
+
+### MCP tools
+
+- [x] **Work state** — `work_state_write` / `work_state_read`, plus a DSH stand-in for claude-mem's **auto-clear**: re-injecting unfinished items after DSH compacts the context (0.4.0).
+- [ ] `dumb_search` — title-word lookup without reasoning: fast and shallow.
+- [ ] `get_tool_uses` — fetch the original `tool_input` / `tool_response` for tool calls you already found by id.
+- [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter symbol search, file outline, and symbol expansion.
+- [ ] `corpora` — build, prime, query, rebuild, reprime, and list knowledge corpora.
+
+### Hooks
+
+- [ ] **file-context** — inject the observations related to a file before `Read` / `Bash` / `Grep` / `Glob`. DSH's `tools/pre-execute` only answers allow / deny / cancel / ask, so this needs an injection path (or a `mem_file_context` tool instead).
+- [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
+
+### Not planned
+
+- TeamBrain
+- The server-side `observation_*` tools
+- The My Work viewer and deliverables
+- The stats / export / admin routes
+- claude-mem's bundled skills and modes
+
