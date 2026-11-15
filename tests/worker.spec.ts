@@ -150,3 +150,55 @@ describe('WorkerClient.getObservations', () => {
     expect(result.items[0].facts).toBeUndefined()
   })
 })
+
+describe('WorkerClient.dumbSearch', () => {
+  it('posts the mapped body and keeps the failure tag', async () => {
+    stubFetch({ content: [{ type: 'text', text: 'dumb text' }], isError: true })
+    const client = new WorkerClient(limits)
+    const result = await client.dumbSearch({ query: 'q', limit: 5, maxDetails: 2 })
+    expect(result).toEqual({ content: 'dumb text', isError: true })
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+    expect(calls[0][0]).toBe('http://127.0.0.1:39999/api/dumb-search')
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({ query: 'q', limit: 5, maxDetails: 2 })
+  })
+
+  it('rejects a blank query before any request', async () => {
+    const client = new WorkerClient(limits)
+    await expect(client.dumbSearch({ query: '   ' })).rejects.toThrow(/query is required/)
+  })
+})
+
+describe('WorkerClient.toolUses', () => {
+  it('posts the ids and maps snake_case rows with bodies untouched', async () => {
+    stubFetch([{
+      id: 542,
+      tool_use_id: 'chatcmpl-1',
+      tool_name: 'Bash',
+      project: '.dsh',
+      tool_input: '{"command":"x"}',
+      tool_response: 'ok',
+      tool_input_bytes: 15,
+      tool_response_bytes: 2,
+    }])
+    const client = new WorkerClient(limits)
+    const rows = await client.toolUses({ ids: [542] })
+    expect(rows).toEqual([{
+      id: 542,
+      toolUseId: 'chatcmpl-1',
+      toolName: 'Bash',
+      project: '.dsh',
+      toolInput: '{"command":"x"}',
+      toolResponse: 'ok',
+      inputBytes: 15,
+      responseBytes: 2,
+    }])
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+    expect(calls[0][0]).toBe('http://127.0.0.1:39999/api/tool-uses/batch')
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({ ids: [542] })
+  })
+
+  it('rejects an empty id list', async () => {
+    const client = new WorkerClient(limits)
+    await expect(client.toolUses({ ids: [] })).rejects.toThrow(/at least one tool-use id/)
+  })
+})

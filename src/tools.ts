@@ -8,12 +8,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { WorkerClient } from './worker.js'
 import type {
+  MemDumbSearchRequest,
   MemGetObservationsRequest,
   MemObservation,
   MemSaveRequest,
   MemSearchRequest,
   MemSearchResult,
   MemTimelineRequest,
+  MemToolUse,
+  MemToolUsesRequest,
 } from './types.js'
 
 export interface ToolsConfig {
@@ -23,6 +26,8 @@ export interface ToolsConfig {
   save?: boolean
   context?: boolean
   workState?: boolean
+  dumbSearch?: boolean
+  toolUses?: boolean
   timeoutMs: number
 }
 
@@ -125,6 +130,8 @@ export function applyMemoryTools(ctx: Context, worker: WorkerClient, config: Too
   if (config.save !== false) applySaveTool(ctx, worker, config.timeoutMs)
   if (config.context !== false) applyContextTool(ctx, worker, config.timeoutMs)
   if (config.workState !== false) applyWorkStateTools(ctx, worker, config.timeoutMs)
+  if (config.dumbSearch !== false) applyDumbSearchTool(ctx, worker, config.timeoutMs)
+  if (config.toolUses !== false) applyToolUsesTool(ctx, worker, config.timeoutMs)
 }
 
 function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
@@ -142,6 +149,7 @@ function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number):
       dateEnd: { type: 'string', description: 'End date filter (ISO).' },
       offset: { type: 'integer', description: 'Pagination offset.' },
       orderBy: { type: 'string', description: "'date_desc' or 'date_asc'." },
+      deep: { type: 'boolean', description: 'Opt-in local raw-tool search when observations have no matches. Requires CLAUDE_MEM_TOOL_USES_SEARCH_ENABLED on the worker; first page only. Results use T IDs; fetch selected numeric IDs with mem_get_tool_uses.' },
     },
     output: {
       schema: {
@@ -197,6 +205,139 @@ function applyTimelineTool(ctx: Context, worker: WorkerClient, timeoutMs: number
       return queryText(await worker.timeline(input, exec.signal))
     },
   }))
+}
+
+/** The worker's own response budget, and the note it appends when text is cut. */
+const TOOL_USE_TEXT_BUDGET = 32 * 1024
+const TOOL_USE_TRUNCATION_NOTE = '\n[Response shortened; request fewer selected records for more detail.]'
+
+function applyDumbSearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
+  ctx.tools.register(defineTool({
+    name: 'mem_dumb_search',
+    description: 'Dumb search (optional): does not reason about the results — fast, but shallow. One call picks records by title word overlap, adds nearby context, and returns up to maxDetails records. Use mem_search for reliable recall.',
+    parameters: {
+      query: { type: 'string', required: true, description: 'Search query, up to 500 characters.' },
+      project: { type: 'string', description: 'Optional project filter.' },
+      limit: { type: 'integer', description: 'Index result count (1-20, default 20).' },
+      maxDetails: { type: 'integer', description: 'Maximum full details (1-5, default 3).' },
+      depthBefore: { type: 'integer', description: 'Context rows before each selected anchor (0-3, default 2).' },
+      depthAfter: { type: 'integer', description: 'Context rows after each selected anchor (0-3, default 2).' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          content: { type: 'string', required: true },
+          isError: { type: 'boolean' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.content }],
+    },
+    timeoutMs,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      assertRange('limit', args.limit, 1, 20)
+      assertRange('maxDetails', args.maxDetails, 1, 5)
+      assertRange('depthBefore', args.depthBefore, 0, 3)
+      assertRange('depthAfter', args.depthAfter, 0, 3)
+      const input: MemDumbSearchRequest = {
+        query: args.query,
+        ...args.project !== undefined ? { project: args.project } : {},
+        ...args.limit !== undefined ? { limit: args.limit } : {},
+        ...args.maxDetails !== undefined ? { maxDetails: args.maxDetails } : {},
+        ...args.depthBefore !== undefined ? { depthBefore: args.depthBefore } : {},
+        ...args.depthAfter !== undefined ? { depthAfter: args.depthAfter } : {},
+      }
+      return await worker.dumbSearch(input, exec.signal)
+    },
+  }))
+}
+
+function applyToolUsesTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
+  ctx.tools.register(defineTool({
+    name: 'mem_get_tool_uses',
+    description: 'Exceptional follow-up (raw tool I/O, rarely needed): fetch the ORIGINAL tool_input and tool_response for tool calls you already identified. Requires ids — run mem_search with deep: true first and pass only the ids you need; these payloads are large and unsummarized. ids accept numeric tool-use ids or opaque tool_use_id strings. At most 100 ids per call.',
+    parameters: {
+      ids: { type: 'array', required: true, description: 'Tool-use ids to fetch (at most 100; numeric ids or tool_use_id strings).' },
+      limit: { type: 'integer', description: 'Max rows to return (default 100, max 200).' },
+      project: { type: 'string', description: 'Filter by project name.' },
+      contentSessionId: { type: 'string', description: 'Filter by the content session id.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          items: { type: 'array', required: true, items: {
+            type: 'object', additionalProperties: false, properties: {
+              id: { type: 'number', required: true },
+              toolUseId: { type: 'string' },
+              toolName: { type: 'string' },
+              project: { type: 'string' },
+              platformSource: { type: 'string' },
+              memorySessionId: { type: 'string' },
+              contentSessionId: { type: 'string' },
+              promptNumber: { type: 'number' },
+              createdAt: { type: 'string' },
+              inputBytes: { type: 'number' },
+              responseBytes: { type: 'number' },
+              toolInput: { type: 'string' },
+              toolResponse: { type: 'string' },
+            },
+          } },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: formatToolUses(value.items) }],
+    },
+    timeoutMs,
+    isConcurrencySafe: () => true,
+    async execute(args, exec) {
+      const ids = args.ids.filter((value): value is number | string => typeof value === 'number' || typeof value === 'string')
+      if (ids.length !== args.ids.length) throw new Error('tool-use ids must be numbers or strings')
+      if (ids.length === 0) throw new Error('at least one tool-use id is required')
+      if (ids.length > 100) throw new Error('at most 100 tool-use ids per call')
+      if (args.limit !== undefined && (args.limit < 1 || args.limit > 200)) throw new Error('limit must be between 1 and 200')
+      const input: MemToolUsesRequest = {
+        ids,
+        ...args.limit !== undefined ? { limit: args.limit } : {},
+        ...args.project !== undefined ? { project: args.project } : {},
+        ...args.contentSessionId !== undefined ? { contentSessionId: args.contentSessionId } : {},
+      }
+      return { items: [...await worker.toolUses(input, exec.signal)] }
+    },
+  }))
+}
+
+/** One block per raw tool call, capped at the worker's 32 KiB response budget. */
+function formatToolUses(items: readonly MemToolUse[]): string {
+  if (items.length === 0) return 'No tool uses found for the given ids.'
+  const blocks = items.map((item) => {
+    const name = item.toolName ?? 'unknown'
+    const project = item.project !== undefined ? ` (${item.project})` : ''
+    return `#T${item.id} ${name}${project}\n  input: ${item.toolInput ?? ''}\n  response: ${item.toolResponse ?? ''}`
+  })
+  return truncateText(blocks.join('\n'), TOOL_USE_TEXT_BUDGET, TOOL_USE_TRUNCATION_NOTE)
+}
+
+/** Cut on code-point boundaries so the UTF-8 byte budget is never exceeded. */
+function truncateText(text: string, budget: number, note: string): string {
+  if (Buffer.byteLength(text, 'utf8') <= budget) return text
+  const limit = budget - Buffer.byteLength(note, 'utf8')
+  let out = ''
+  let bytes = 0
+  for (const ch of text) {
+    const size = Buffer.byteLength(ch, 'utf8')
+    if (bytes + size > limit) break
+    out += ch
+    bytes += size
+  }
+  return out + note
+}
+
+function assertRange(field: string, value: number | undefined, min: number, max: number): void {
+  if (value === undefined) return
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${field} must be between ${min} and ${max}`)
 }
 
 function applyGetObservationsTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
@@ -386,6 +527,7 @@ function buildSearchRequest(args: {
   dateEnd?: string
   offset?: number
   orderBy?: string
+  deep?: boolean
 }): MemSearchRequest {
   const orderBy = args.orderBy === 'date_asc' || args.orderBy === 'date_desc' ? args.orderBy : undefined
   return {
@@ -399,6 +541,7 @@ function buildSearchRequest(args: {
     ...args.dateEnd !== undefined ? { dateEnd: args.dateEnd } : {},
     ...args.offset !== undefined ? { offset: args.offset } : {},
     ...orderBy !== undefined ? { orderBy } : {},
+    ...args.deep !== undefined ? { deep: args.deep } : {},
   }
 }
 

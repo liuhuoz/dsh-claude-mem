@@ -8,6 +8,8 @@
 import { MemError } from './types.js'
 import type {
   MemContextRequest,
+  MemDumbSearchRequest,
+  MemDumbSearchResult,
   MemGetObservationsRequest,
   MemObservation,
   MemSaveRequest,
@@ -17,6 +19,8 @@ import type {
   MemSessionInitRequest,
   MemSessionSummarizeRequest,
   MemTimelineRequest,
+  MemToolUse,
+  MemToolUsesRequest,
 } from './types.js'
 import { dedupeObservations, dedupeRenderedTable } from './dedupe.js'
 
@@ -84,6 +88,7 @@ export class WorkerClient {
     if (request.dateEnd !== undefined) query.set('dateEnd', request.dateEnd)
     if (request.offset !== undefined) query.set('offset', String(request.offset))
     if (request.orderBy !== undefined) query.set('orderBy', request.orderBy)
+    if (request.deep !== undefined) query.set('deep', String(request.deep))
     return await this.query('/api/search', query, signal)
   }
 
@@ -104,6 +109,34 @@ export class WorkerClient {
     if (request.project !== undefined) body.project = request.project
     const raw: unknown = await this.requestJson<unknown>('/api/observations/batch', { method: 'POST', body }, signal)
     return { items: this.finalizeItems((Array.isArray(raw) ? raw : []).map(asObservation)) }
+  }
+
+  /** One-call dumb search: the worker answers with finished text, not a record list. */
+  async dumbSearch(request: MemDumbSearchRequest, signal?: AbortSignal): Promise<MemDumbSearchResult> {
+    if (request.query.trim().length === 0) throw new MemError('a search query is required', 'MEM_INVALID_REQUEST')
+    const body: Record<string, unknown> = { query: request.query }
+    if (request.project !== undefined) body.project = request.project
+    if (request.limit !== undefined) body.limit = request.limit
+    if (request.maxDetails !== undefined) body.maxDetails = request.maxDetails
+    if (request.depthBefore !== undefined) body.depthBefore = request.depthBefore
+    if (request.depthAfter !== undefined) body.depthAfter = request.depthAfter
+    const raw: unknown = await this.requestJson<unknown>('/api/dumb-search', { method: 'POST', body }, signal)
+    const record = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    return {
+      content: contentText(record.content) ?? '',
+      ...record.isError === true ? { isError: true as const } : {},
+    }
+  }
+
+  /** Raw tool input/output bodies for the ids the caller already picked. */
+  async toolUses(request: MemToolUsesRequest, signal?: AbortSignal): Promise<readonly MemToolUse[]> {
+    if (request.ids.length === 0) throw new MemError('at least one tool-use id is required', 'MEM_INVALID_REQUEST')
+    const body: Record<string, unknown> = { ids: [...request.ids] }
+    if (request.limit !== undefined) body.limit = request.limit
+    if (request.project !== undefined) body.project = request.project
+    if (request.contentSessionId !== undefined) body.contentSessionId = request.contentSessionId
+    const raw: unknown = await this.requestJson<unknown>('/api/tool-uses/batch', { method: 'POST', body }, signal)
+    return (Array.isArray(raw) ? raw : []).map(asToolUse)
   }
 
   async save(request: MemSaveRequest, signal?: AbortSignal): Promise<MemSaveResult> {
@@ -301,6 +334,27 @@ function asObservation(value: unknown): MemObservation {
     ...optionalString(record.origin_device_id, 'originDeviceId'),
     ...optionalString(record.origin_local_id, 'originLocalId'),
     ...optionalString(record.sync_rev, 'syncRev'),
+  }
+}
+
+function asToolUse(value: unknown): MemToolUse {
+  const record = (value !== null && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return {
+    id: typeof record.id === 'number' ? record.id : Number(record.id) || 0,
+    ...optionalString(record.tool_use_id, 'toolUseId'),
+    ...optionalString(record.tool_name, 'toolName'),
+    ...optionalString(record.project, 'project'),
+    ...optionalString(record.platform_source, 'platformSource'),
+    ...optionalString(record.memory_session_id, 'memorySessionId'),
+    ...optionalString(record.content_session_id, 'contentSessionId'),
+    ...typeof record.session_db_id === 'number' ? { sessionDbId: record.session_db_id } : {},
+    ...typeof record.prompt_number === 'number' ? { promptNumber: record.prompt_number } : {},
+    ...optionalString(record.created_at, 'createdAt'),
+    ...typeof record.created_at_epoch === 'number' ? { createdAtEpoch: record.created_at_epoch } : {},
+    ...typeof record.tool_input_bytes === 'number' ? { inputBytes: record.tool_input_bytes } : {},
+    ...typeof record.tool_response_bytes === 'number' ? { responseBytes: record.tool_response_bytes } : {},
+    ...optionalString(record.tool_input, 'toolInput'),
+    ...optionalString(record.tool_response, 'toolResponse'),
   }
 }
 

@@ -39,6 +39,14 @@ Pick the candidate ids from the index results that look relevant to the question
 Use \`mem_get_observations\` with the selected ids. Use \`mem_timeline\` to get context
 around a specific observation by id.
 
+### Optional: dumb search
+
+\`mem_dumb_search\` answers in one call: it picks records by title word overlap, adds nearby context, and returns the selected details. It does not reason about the results — fast, but shallow.
+
+### Last resort: raw tool I/O
+
+\`mem_get_tool_uses\` returns the original tool_input / tool_response for tool calls you already identified. It needs tool-use ids, which only \`mem_search\` with \`deep: true\` produces (the worker must have CLAUDE_MEM_TOOL_USES_SEARCH_ENABLED set); those payloads are unsummarized and can be thousands of tokens each.
+
 For the worker's own session-start context text, use \`mem_context\`.
 `
 

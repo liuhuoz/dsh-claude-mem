@@ -68,12 +68,60 @@ export interface MemSearchRequest {
   readonly dateEnd?: string
   readonly offset?: number
   readonly orderBy?: 'date_desc' | 'date_asc'
+  readonly deep?: boolean
 }
 
 /** Normalized query result: either the worker's own index text or a typed item list. */
 export interface MemSearchResult {
   readonly items: readonly MemObservation[]
   readonly content?: string
+}
+
+/** One-call dumb search: the worker renders the whole answer as text. */
+export interface MemDumbSearchRequest {
+  readonly query: string
+  readonly project?: string
+  readonly limit?: number
+  readonly maxDetails?: number
+  readonly depthBefore?: number
+  readonly depthAfter?: number
+}
+
+/**
+ * The worker's rendered dumb-search text plus its own failure tag. The tag is
+ * carried through untouched: a DSH tool result has no `isError` slot, so the
+ * value keeps the field instead of turning a reported failure into a throw.
+ */
+export interface MemDumbSearchResult {
+  readonly content: string
+  readonly isError?: true
+}
+
+/** One raw tool call from `/api/tool-uses/batch`, bodies included and unparsed. */
+export interface MemToolUse {
+  readonly id: number
+  readonly toolUseId?: string
+  readonly toolName?: string
+  readonly project?: string
+  readonly platformSource?: string
+  readonly memorySessionId?: string
+  readonly contentSessionId?: string
+  readonly sessionDbId?: number
+  readonly promptNumber?: number
+  readonly createdAt?: string
+  readonly createdAtEpoch?: number
+  readonly inputBytes?: number
+  readonly responseBytes?: number
+  readonly toolInput?: string
+  readonly toolResponse?: string
+}
+
+/** Tool-use ids: numeric ids, opaque `tool_use_id` strings, or a mix. */
+export interface MemToolUsesRequest {
+  readonly ids: readonly (number | string)[]
+  readonly limit?: number
+  readonly project?: string
+  readonly contentSessionId?: string
 }
 
 export interface MemTimelineRequest {
