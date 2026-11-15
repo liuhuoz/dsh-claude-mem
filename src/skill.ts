@@ -27,7 +27,7 @@ NEVER fetch full details without filtering first. This saves 10x tokens.
 
 ### Step 1: Search — get an index with ids
 
-Use the \`mem_search\` tool with a free-text query. It returns ids, titles, and types.
+Use the \`mem_search\` tool with a free-text query. It returns a table of IDs, titles, and dates.
 Omit \`platformSource\` to search ALL memory; set it only to restrict to your own platform's memory.
 
 ### Step 2: Filter — narrow to the interesting ids

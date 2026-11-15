@@ -62,25 +62,12 @@ interface FullItem extends IndexItem {
 }
 
 interface QueryOutput {
-  items: IndexItem[]
-  content?: string
+  content: string
 }
 
 interface FullQueryOutput {
   items: FullItem[]
   content?: string
-}
-
-/** Project an observation down to the index view (search/timeline). */
-function projectIndexItem(item: MemObservation, opts: { createdAtEpoch?: boolean }): IndexItem {
-  return {
-    id: item.id,
-    title: item.title,
-    ...item.type !== undefined ? { type: item.type } : {},
-    ...item.project !== undefined ? { project: item.project } : {},
-    ...(opts.createdAtEpoch && item.createdAtEpoch !== undefined) ? { createdAtEpoch: item.createdAtEpoch } : {},
-    ...item.narrative !== undefined ? { narrative: item.narrative } : {},
-  }
 }
 
 /** Project an observation to its full shape, keeping every field the worker returned. */
@@ -117,12 +104,9 @@ function projectFullItem(item: MemObservation): FullItem {
   return full
 }
 
-function projectQueryResult(value: MemSearchResult, opts: { createdAtEpoch?: boolean } = {}): QueryOutput {
-  const items: IndexItem[] = value.items.map(item => projectIndexItem(item, opts))
-  return {
-    items,
-    ...value.content !== undefined ? { content: value.content } : {},
-  }
+/** Pass the worker's rendered text through untouched: it answers with a table, not items. */
+function queryText(value: MemSearchResult): QueryOutput {
+  return { content: value.content ?? '' }
 }
 
 function projectFullResult(value: MemSearchResult): FullQueryOutput {
@@ -146,7 +130,7 @@ export function applyMemoryTools(ctx: Context, worker: WorkerClient, config: Too
 function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number): void {
   ctx.tools.register(defineTool({
     name: 'mem_search',
-    description: 'Search persistent cross-session memory for observations matching a query. Returns an index with ids, titles, and types — fetch full details only for filtered ids.',
+    description: 'Search persistent cross-session memory and return the worker\'s rendered index table (IDs, dates, titles, read cost). Review it, then fetch full details only for the ids you pick.',
     parameters: {
       query: { type: 'string', required: true, description: 'Free-text search query.' },
       limit: { type: 'integer', description: 'Max results (default 20).' },
@@ -164,25 +148,15 @@ function applySearchTool(ctx: Context, worker: WorkerClient, timeoutMs: number):
         type: 'object',
         additionalProperties: false,
         properties: {
-          items: { type: 'array', required: true, items: {
-            type: 'object', additionalProperties: false, properties: {
-              id: { type: 'number', required: true },
-              title: { type: 'string', required: true },
-              type: { type: 'string' },
-              project: { type: 'string' },
-              createdAtEpoch: { type: 'number' },
-              narrative: { type: 'string' },
-            },
-          } },
-          content: { type: 'string' },
+          content: { type: 'string', required: true },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: formatQueryOutput(value) }],
+      render: (_args, value) => [{ type: 'text', text: value.content }],
     },
     timeoutMs,
     isConcurrencySafe: () => true,
     async execute(args, exec) {
-      return projectQueryResult(await worker.search(buildSearchRequest(args), exec.signal), { createdAtEpoch: true })
+      return queryText(await worker.search(buildSearchRequest(args), exec.signal))
     },
   }))
 }
@@ -204,19 +178,10 @@ function applyTimelineTool(ctx: Context, worker: WorkerClient, timeoutMs: number
         type: 'object',
         additionalProperties: false,
         properties: {
-          items: { type: 'array', required: true, items: {
-            type: 'object', additionalProperties: false, properties: {
-              id: { type: 'number', required: true },
-              title: { type: 'string', required: true },
-              type: { type: 'string' },
-              project: { type: 'string' },
-              narrative: { type: 'string' },
-            },
-          } },
-          content: { type: 'string' },
+          content: { type: 'string', required: true },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: formatQueryOutput(value) }],
+      render: (_args, value) => [{ type: 'text', text: value.content }],
     },
     timeoutMs,
     isConcurrencySafe: () => true,
@@ -229,7 +194,7 @@ function applyTimelineTool(ctx: Context, worker: WorkerClient, timeoutMs: number
         ...args.project !== undefined ? { project: args.project } : {},
         ...args.platformSource !== undefined ? { platformSource: args.platformSource } : {},
       }
-      return projectQueryResult(await worker.timeline(input, exec.signal), { createdAtEpoch: true })
+      return queryText(await worker.timeline(input, exec.signal))
     },
   }))
 }
@@ -435,19 +400,6 @@ function buildSearchRequest(args: {
     ...args.offset !== undefined ? { offset: args.offset } : {},
     ...orderBy !== undefined ? { orderBy } : {},
   }
-}
-
-export function formatQueryOutput(value: QueryOutput): string {
-  if (value.content !== undefined && value.content.length > 0) return value.content
-  if (value.items.length === 0) return 'No results found.'
-  return value.items
-    .map((item) => {
-      const type = item.type !== undefined ? ` [${item.type}]` : ''
-      const project = item.project !== undefined ? ` (${item.project})` : ''
-      const narrative = item.narrative !== undefined ? `\n  ${item.narrative}` : ''
-      return `#${item.id} ${item.title}${type}${project}${narrative}`
-    })
-    .join('\n')
 }
 
 /** Render full observation details (every field) for `mem_get_observations`. */
