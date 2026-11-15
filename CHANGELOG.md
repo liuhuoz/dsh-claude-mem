@@ -2,6 +2,18 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.5.0
+
+### Added
+
+- `mem_dumb_search`: claude-mem's one-call dumb search (index → nearby context → selected details) over the worker's `/api/dumb-search`. The worker renders the whole answer, so the tool returns that text unchanged.
+- `mem_get_tool_uses`: the original `tool_input` / `tool_response` of tool calls, by id, over `/api/tool-uses/batch`. Rendered text is capped at the worker's own 32 KiB budget with its own shortening note.
+- `mem_search` gains claude-mem's `deep` flag, forwarded untouched. The T ids that `mem_get_tool_uses` needs come from that path, and the worker only fills them when `CLAUDE_MEM_TOOL_USES_SEARCH_ENABLED` is set on its side; otherwise it answers "Raw tool search: disabled", which is passed through as-is.
+
+### Notes
+
+- A dumb-search reply carries the worker's own `isError` tag as a field instead of a thrown error: a DSH tool result has no `isError` slot, and throwing would flatten the text into an error message.
+
 ## 0.4.1
 
 ### Changed
