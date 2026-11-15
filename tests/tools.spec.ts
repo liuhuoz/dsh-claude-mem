@@ -4,7 +4,10 @@ import { applyMemoryTools } from '../src/tools.ts'
 /** A tool definition as registered on `ctx.tools`. */
 interface Captured {
   name: string
-  output: { render: (args: unknown, value: any) => Array<{ type: string; text: string }> }
+  output: {
+    render: (args: unknown, value: any) => Array<{ type: string; text: string }>
+    schema: { properties?: Record<string, unknown> }
+  }
   execute: (args: any, exec: any) => Promise<any>
 }
 
@@ -92,6 +95,19 @@ describe('mem_get_tool_uses output', () => {
     const tool = capture({ toolUses: async () => [] }).mem_get_tool_uses
     await expect(tool.execute({ ids: [] }, {})).rejects.toThrow(/at least one tool-use id/)
     await expect(tool.execute({ ids: Array.from({ length: 101 }, (_, i) => i) }, {})).rejects.toThrow(/at most 100 tool-use ids/)
+  })
+
+  it('declares every field a row can carry, so the schema never rejects real data', async () => {
+    const row = {
+      id: 1, toolUseId: 't', toolName: 'Bash', project: 'p', platformSource: 'claude',
+      memorySessionId: 'm', contentSessionId: 'c', sessionDbId: 7, promptNumber: 3,
+      createdAt: '2026-08-02T14:03:15.937Z', createdAtEpoch: 1785679395937,
+      inputBytes: 1, responseBytes: 2, toolInput: '{}', toolResponse: 'ok',
+    }
+    const tool = capture({ toolUses: async () => [row] }).mem_get_tool_uses
+    const value = await tool.execute({ ids: [1] }, {})
+    const itemSchema = (tool.output.schema.properties as any)?.items?.items as { properties?: Record<string, unknown> } | undefined
+    expect(Object.keys(itemSchema?.properties ?? {}).sort()).toEqual(Object.keys(value.items[0]).sort())
   })
 
   it('says so when no rows come back', async () => {
