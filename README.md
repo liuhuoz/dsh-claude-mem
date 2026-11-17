@@ -49,7 +49,9 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 
 ## Roadmap
 
-### MCP tools
+### Phase 1 — complete the feature surface
+
+#### MCP tools
 
 - [x] **Work state** — `work_state_write` / `work_state_read`, plus a DSH stand-in for claude-mem's **auto-clear**: re-injecting unfinished items after DSH compacts the context (0.4.0).
 - [x] `dumb_search` — title-word lookup without reasoning: fast and shallow (0.5.0).
@@ -57,11 +59,19 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 - [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter symbol search, file outline, and symbol expansion.
 - [ ] `corpora` — build, prime, query, rebuild, reprime, and list knowledge corpora.
 
-### Hooks
+#### Hooks
 
 - [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe. A separate opt-in switch can also deny a full read of a large file memory already covers, with an explicit-prompt bypass (0.6.0).
-- [ ] **file-context over HTTP** — replace the hook CLI with a direct `/api/observations/by-file` read (about 0.1 s instead of 0.4 s) and own the rendering, the dedupe, the staleness gate and MSYS path handling; `FileContextSource` is already the seam. The gate's "does memory still cover this file" check gets sharper in the same pass.
 - [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
+- [ ] **Failure observations** — claude-mem records a failed tool call through `PostToolUseFailure` (`is_error: true`). The plugin's payload is always `PostToolUse` with `is_error: false`, and a result carrying `isError` never reaches the hook, so failed tool calls are never recorded.
+- [ ] **Post-compaction context** — the compaction branch of `SessionStart`: claude-mem re-injects the session-start context when a session continues from a compaction; the plugin only re-injects the open work state.
+
+### Phase 2 — efficiency and control
+
+- [ ] **file-context over HTTP** — replace the `claude-mem` CLI spawn (`hook claude-code file-context`, measured at 386–650 ms) with a direct `GET /api/observations/by-file` (74–114 ms) behind the existing `FileContextSource` seam. This takes over rendering, per-session dedupe, mtime staleness and MSYS path normalization, which claude-mem owns today. The `format` query parameter is inert, so rendering has to move client-side anyway. The gate's "does memory still cover this file" check gets sharper in the same pass.
+- [ ] **Platform identity** — every stored observation currently reports `platform_source=claude`, and the plugin sends no label by default. Retrieval is unaffected; a write-side change plus a one-time backfill is needed before `dsh` can be filtered on.
+- [ ] **Observation transport cost** — the adapter-of-adapter path spawns one `claude-mem` process per recorded tool result. Batching or rate-limiting it is a transport change only: observation generation stays inside the worker.
+- [ ] **Injection budget** — the file-context block is capped at 4,000 characters here while claude-mem caps its own session-start block at 10,000. Pick one policy per surface.
 
 ### Not planned
 
