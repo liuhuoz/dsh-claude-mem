@@ -21,6 +21,7 @@ export interface LiveSettings {
   readonly autoStartWorker: boolean
   readonly workState: boolean
   readonly fileContext: boolean
+  readonly fileContextGate: boolean
   readonly fileContextTools: readonly string[]
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
@@ -38,6 +39,7 @@ const DEFAULTS = {
   autoStartWorker: true,
   workState: true,
   fileContext: false,
+  fileContextGate: false,
   timeoutMs: 30_000,
   dedupe: true,
 } as const
@@ -106,6 +108,7 @@ export function resolveSettings(raw: unknown): LiveSettings {
     autoStartWorker: readFlag(source.autoStartWorker, DEFAULTS.autoStartWorker),
     workState: readFlag(source.workState, DEFAULTS.workState),
     fileContext: readFlag(source.fileContext, DEFAULTS.fileContext),
+    fileContextGate: readFlag(source.fileContextGate, DEFAULTS.fileContextGate),
     fileContextTools: readStringList(source.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS),
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),

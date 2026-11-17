@@ -79,6 +79,7 @@ export const Config = Schema.object({
   hookPath: Schema.string().default('').volatile(),
   workState: Schema.boolean().default(true).volatile(),
   fileContext: Schema.boolean().default(false).volatile(),
+  fileContextGate: Schema.boolean().default(false).volatile(),
   fileContextTools: Schema.array(Schema.string()).default(['read', 'ops_bash', 'pwsh', 'grep', 'glob']).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })

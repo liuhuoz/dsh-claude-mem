@@ -98,7 +98,7 @@ describe('Config schema', () => {
    * shipped as "unavailable".
    */
   it('marks every field the page edits as volatile', () => {
-    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextTools']
+    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextGate', 'fileContextTools']
     for (const field of pageFields) {
       expect(nodeOf(field)?.meta?.volatile, `${field} must be volatile`).toBe(true)
     }

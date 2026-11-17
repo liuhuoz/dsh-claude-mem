@@ -140,6 +140,25 @@ export function parseHookOutput(stdout: string): string | null {
  * a tool call over.
  */
 
+/**
+ * True when the prompt the user actually typed names this file.
+ *
+ * The gate is a token heuristic, so an explicit request outranks it: a full
+ * path, the last two path segments, or a file name long enough to be specific
+ * all count as "the user asked for this file".
+ */
+export function promptMentionsFile(prompt: string, filePath: string): boolean {
+  const haystack = prompt.replace(/\\/g, "/").toLowerCase()
+  if (haystack.trim().length === 0) return false
+  const needle = filePath.replace(/\\/g, "/").toLowerCase()
+  if (haystack.includes(needle)) return true
+  const segments = needle.split("/").filter(part => part.length > 0)
+  const base = segments[segments.length - 1] ?? ""
+  if (base.length >= 10 && haystack.includes(base)) return true
+  const tail = segments.slice(-2).join("/")
+  return tail.length > base.length && haystack.includes(tail)
+}
+
 /** Files at or above this size are worth gating: a full read dumps them into context. */
 export const GATE_MIN_BYTES = 32 * 1024
 

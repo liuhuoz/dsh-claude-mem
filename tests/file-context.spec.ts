@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capContext, claudeToolName, gateCandidate, gateReason, msysToWin, parseHookOutput, preToolPayload } from '../src/file-context.js'
+import { capContext, claudeToolName, gateCandidate, gateReason, msysToWin, parseHookOutput, preToolPayload, promptMentionsFile } from '../src/file-context.js'
 
 const call = (name: string, args: unknown) => ({ sessionId: 'session-1', cwd: 'D:/repo', name, arguments: args })
 
@@ -112,5 +112,25 @@ describe('gateReason', () => {
     expect(reason).toContain('64 KB')
     expect(reason).toContain('offset')
     expect(reason).toContain('mem_search')
+  })
+})
+
+describe('promptMentionsFile', () => {
+  const target = 'C:/Users/me/project/src/worker-service.ts'
+
+  it('matches the full path, the last two segments, and a specific file name', () => {
+    expect(promptMentionsFile('please read C:/Users/me/project/src/worker-service.ts fully', target)).toBe(true)
+    expect(promptMentionsFile('look at src/worker-service.ts', target)).toBe(true)
+    expect(promptMentionsFile('fix worker-service.ts', target)).toBe(true)
+  })
+
+  it('ignores unrelated prompts and short generic names', () => {
+    expect(promptMentionsFile('run the tests', target)).toBe(false)
+    expect(promptMentionsFile('', target)).toBe(false)
+    expect(promptMentionsFile('touch index.ts', 'C:/a/index.ts')).toBe(false)
+  })
+
+  it('is case-insensitive and slash-agnostic', () => {
+    expect(promptMentionsFile('read C:\\Users\\Me\\Project\\src\\worker-service.ts', target)).toBe(true)
   })
 })

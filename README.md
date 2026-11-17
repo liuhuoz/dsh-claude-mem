@@ -43,7 +43,8 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Record tool calls | Send every observed tool result through claude-mem's observer. |
 | Summarize turns | Write a session summary when a turn ends. |
 | Work state | Keep to-do lists across sessions: the two `work_state` tools, plus re-injecting unfinished items after the context is compacted. Off hides all three. |
-| File context | Attach what memory already knows about a file after a read-like tool call, and deny a full read of a 32 KB+ file that memory already covers (the reason points at `offset`/`limit` reads and `mem_search`). Off by default: each new file costs one hook start (about 0.4 s). The watched tools are configurable (advanced). |
+| File context | Attach what memory already knows about a file after a read-like tool call. Off by default: each new file costs one hook start (about 0.4 s). The watched tools are configurable (advanced). |
+| Refuse full reads | Optional, off by default: deny a full read of a 32 KB+ file memory already covers and point at `offset`/`limit` reads and `mem_search`. DSH already caps one read at about 50 KB, so the gain is small; a file named in the user's prompt always passes. |
 | Observed tools | Which tools the previous switch watches (advanced). |
 
 ## Roadmap

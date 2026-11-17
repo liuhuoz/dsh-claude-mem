@@ -34,6 +34,7 @@ interface Draft {
   workState: boolean
   autoStartWorker: boolean
   fileContext: boolean
+  fileContextGate: boolean
   fileContextTools: string
   toolNames: string
 }
@@ -81,6 +82,7 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     workState: source.workState !== false,
     autoStartWorker: source.autoStartWorker !== false,
     fileContext: source.fileContext === true,
+    fileContextGate: source.fileContextGate === true,
     fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
   }
@@ -105,6 +107,7 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['autoStartWorker'], value: draft.autoStartWorker },
     names.length === 0 ? { op: 'unset', path: ['toolFilter'] } : { op: 'set', path: ['toolFilter', 'names'], value: names },
     { op: 'set', path: ['fileContext'], value: draft.fileContext },
+    { op: 'set', path: ['fileContextGate'], value: draft.fileContextGate },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
   ]
 }
@@ -322,6 +325,16 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('fileContext')}</span>
         </label>
         <span style={layout.hint}>{t('fileContextHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.fileContextGate}
+            disabled={!writable}
+            label={t('fileContextGate')}
+            onChange={next => update('fileContextGate', next)}
+          />
+          <span>{t('fileContextGate')}</span>
+        </label>
+        <span style={layout.hint}>{t('fileContextGateHint')}</span>
       </section>
 
       <DisclosureRow

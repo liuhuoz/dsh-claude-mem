@@ -15,7 +15,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution, ToolExecutionResult, PostToolDecision, PreToolDecision } from '@deepseek-ai/dsh-tools'
-import { FILE_CONTEXT_TIMEOUT_MS, GATE_MIN_BYTES, HookCliFileContext, gateCandidate, gateReason, preToolPayload } from './file-context.js'
+import { FILE_CONTEXT_TIMEOUT_MS, GATE_MIN_BYTES, HookCliFileContext, gateCandidate, gateReason, preToolPayload, promptMentionsFile } from './file-context.js'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
@@ -194,6 +194,9 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   /** File-context fetches started for a session, consumed at its next pre-step. */
   const pendingFileContext = new Map<string, Promise<string | null>>()
 
+  /** The last prompt the user actually typed: an explicit request bypasses the read gate. */
+  const lastPrompt = new Map<string, string>()
+
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     agents.set(agent.session.id, agent)
@@ -202,7 +205,9 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   })
 
   on('agent/disposed', (payload: { agent?: Agent }) => {
-    if (payload.agent !== undefined) agents.delete(payload.agent.session.id)
+    if (payload.agent === undefined) return
+    agents.delete(payload.agent.session.id)
+    lastPrompt.delete(payload.agent.session.id)
   })
 
   // DSH compacts in place instead of clearing; rehydrate the open work state once
@@ -220,6 +225,8 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     // gives an observation its context, and claude-mem exposes no switch for it
     // either. Only observation and summarization are switchable, here and there.
     recordPrompt(worker, payload.agent, payload.messages, getSettings())
+    const typed = promptText(payload.messages)
+    if (typed.length > 0) lastPrompt.set(payload.agent.session.id, typed)
     const decision = await next()
     return attachFileContext(payload.agent, decision, pendingFileContext)
   })
@@ -228,7 +235,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   // the tool runs: the gate is the point of the feature, and a decision is the only
   // way DSH lets a plugin stop a call.
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>) => {
-    const denial = await fileReadGate(exec, getSettings(), worker)
+    const denial = await fileReadGate(exec, getSettings(), worker, lastPrompt)
     if (denial !== null) return denial
     return next()
   })
@@ -307,9 +314,9 @@ async function fileReadGate(
   exec: ToolExecution,
   settings: LiveSettings,
   worker: WorkerClient,
+  prompts: Map<string, string>,
 ): Promise<PreToolDecision | null> {
-  if (!settings.fileContext) return null
-  if (!settings.fileContextTools.includes(exec.name)) return null
+  if (!settings.fileContextGate) return null
   const candidate = gateCandidate(exec.name, exec.arguments)
   if (candidate === null) return null
   const agent = exec.agent
@@ -325,6 +332,9 @@ async function fileReadGate(
   } catch {
     return null
   }
+  // An explicit request for this file outranks the token heuristic: the user asked.
+  const typed = prompts.get(agent.session.id)
+  if (typed !== undefined && promptMentionsFile(typed, absolute)) return null
   try {
     const covered = await worker.hasObservationsFor([absolute], AbortSignal.timeout(1500))
     if (!covered) return null
