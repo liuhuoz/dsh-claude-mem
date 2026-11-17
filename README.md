@@ -52,14 +52,14 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 ### MCP tools
 
 - [x] **Work state** — `work_state_write` / `work_state_read`, plus a DSH stand-in for claude-mem's **auto-clear**: re-injecting unfinished items after DSH compacts the context (0.4.0).
-- [ ] `dumb_search` — title-word lookup without reasoning: fast and shallow.
-- [ ] `get_tool_uses` — fetch the original `tool_input` / `tool_response` for tool calls you already found by id.
+- [x] `dumb_search` — title-word lookup without reasoning: fast and shallow (0.5.0).
+- [x] `get_tool_uses` — fetch the original `tool_input` / `tool_response` for tool calls you already found by id (0.5.0).
 - [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter symbol search, file outline, and symbol expansion.
 - [ ] `corpora` — build, prime, query, rebuild, reprime, and list knowledge corpora.
 
 ### Hooks
 
-- [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe. The same switch also denies a full read of a large file memory already covers (0.6.0).
+- [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe. A separate opt-in switch can also deny a full read of a large file memory already covers, with an explicit-prompt bypass (0.6.0).
 - [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
 
 ### Not planned
