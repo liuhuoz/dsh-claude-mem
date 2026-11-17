@@ -139,6 +139,47 @@ export function parseHookOutput(stdout: string): string | null {
  * JSON, empty context — answers `null`; a file context is never worth breaking
  * a tool call over.
  */
+
+/** Files at or above this size are worth gating: a full read dumps them into context. */
+export const GATE_MIN_BYTES = 32 * 1024
+
+/** Extensions whose full read is always allowed; upstream skips them too. */
+export const GATE_EXCLUDED_EXTENSIONS: readonly string[] = ['.md', '.markdown', '.yaml', '.yml', '.toml']
+
+/**
+ * Decide whether a tool call is a full-file read worth gating.
+ *
+ * Only a plain `read` of one file qualifies: a call that already narrows the
+ * range (offset or limit) is what the gate wants the model to do instead, so it
+ * always passes. The extension filter mirrors claude-mem's, where prose and
+ * configuration are exempt from the gate.
+ */
+export function gateCandidate(name: string, args: unknown): { filePath: string } | null {
+  if (name !== 'read') return null
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) return null
+  const record = args as Record<string, unknown>
+  const filePath = record.file_path
+  if (typeof filePath !== 'string' || filePath.length === 0) return null
+  const offset = typeof record.offset === 'number' ? record.offset : undefined
+  if (offset !== undefined && offset > 1) return null
+  if (typeof record.limit === 'number') return null
+  const lower = filePath.toLowerCase()
+  if (GATE_EXCLUDED_EXTENSIONS.some(ext => lower.endsWith(ext))) return null
+  return { filePath }
+}
+
+/** Model-facing explanation of the denied full read, in DSH's tool vocabulary. */
+export function gateReason(filePath: string, sizeBytes: number): string {
+  const name = filePath.split(/[\\/]/).pop() ?? filePath
+  const kb = Math.round(sizeBytes / 1024)
+  return [
+    `[claude-mem] Full-file read blocked: ${name} is ${kb} KB and memory already covers it.`,
+    '- Read only what you need: call read again with offset and limit around the section you are changing.',
+    '- Reuse what is already known: mem_search with a query about this file, or mem_get_observations with the ids from the file context.',
+    'Partial reads are always allowed.',
+  ].join('\n')
+}
+
 export class HookCliFileContext implements FileContextSource {
   constructor(
     private readonly launcher: string,

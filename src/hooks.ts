@@ -14,10 +14,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { ToolExecution, ToolExecutionResult, PostToolDecision } from '@deepseek-ai/dsh-tools'
-import { FILE_CONTEXT_TIMEOUT_MS, HookCliFileContext, preToolPayload } from './file-context.js'
+import type { ToolExecution, ToolExecutionResult, PostToolDecision, PreToolDecision } from '@deepseek-ai/dsh-tools'
+import { FILE_CONTEXT_TIMEOUT_MS, GATE_MIN_BYTES, HookCliFileContext, gateCandidate, gateReason, preToolPayload } from './file-context.js'
 import { spawn } from 'node:child_process'
-import { basename } from 'node:path'
+import { statSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
 import type { WorkerClient } from './worker.js'
 import type { LiveSettings } from './settings.js'
 
@@ -223,6 +224,15 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     return attachFileContext(payload.agent, decision, pendingFileContext)
   })
 
+  // A full read of a large file that memory already covers is answered here, before
+  // the tool runs: the gate is the point of the feature, and a decision is the only
+  // way DSH lets a plugin stop a call.
+  ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>) => {
+    const denial = await fileReadGate(exec, getSettings(), worker)
+    if (denial !== null) return denial
+    return next()
+  })
+
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
     if (settings.ingest) observeToolResult(exec, result, settings)
@@ -285,6 +295,43 @@ async function summarizeSession(worker: WorkerClient, agent: Agent, settings: Li
     // Summarization is best-effort.
     ensureWorkerStarted(settings)
   }
+}
+
+/**
+ * Deny a full read of a file that is large and already covered by memory.
+ *
+ * Every uncertainty answers null — unknown size, unreachable worker, no
+ * observations — because letting a read through is always safe.
+ */
+async function fileReadGate(
+  exec: ToolExecution,
+  settings: LiveSettings,
+  worker: WorkerClient,
+): Promise<PreToolDecision | null> {
+  if (!settings.fileContext) return null
+  if (!settings.fileContextTools.includes(exec.name)) return null
+  const candidate = gateCandidate(exec.name, exec.arguments)
+  if (candidate === null) return null
+  const agent = exec.agent
+  if (agent === undefined || isSubagent(agent)) return null
+  const header = agent.session.header
+  const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
+  const absolute = resolve(cwd, candidate.filePath)
+  let size: number
+  try {
+    const stat = statSync(absolute)
+    if (!stat.isFile() || stat.size < GATE_MIN_BYTES) return null
+    size = stat.size
+  } catch {
+    return null
+  }
+  try {
+    const covered = await worker.hasObservationsFor([absolute], AbortSignal.timeout(1500))
+    if (!covered) return null
+  } catch {
+    return null
+  }
+  return { kind: 'deny', reason: gateReason(absolute, size) }
 }
 
 /** Start one file-context fetch; the result is consumed at the next pre-step. */

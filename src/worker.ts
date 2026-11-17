@@ -103,6 +103,19 @@ export class WorkerClient {
     return await this.query('/api/timeline', query, signal)
   }
 
+  /** True when the worker already holds observations filed against one of these paths. */
+  async hasObservationsFor(paths: readonly string[], signal?: AbortSignal): Promise<boolean> {
+    if (paths.length === 0) return false
+    const query = new URLSearchParams()
+    for (const path of paths) query.append('path', path)
+    query.set('limit', '1')
+    const raw: unknown = await this.requestJson<unknown>('/api/observations/by-file', { method: 'GET', query }, signal)
+    const observations = raw !== null && typeof raw === 'object'
+      ? (raw as { observations?: unknown }).observations
+      : undefined
+    return Array.isArray(observations) && observations.length > 0
+  }
+
   async getObservations(request: MemGetObservationsRequest, signal?: AbortSignal): Promise<MemSearchResult> {
     if (request.ids.length === 0) throw new MemError('at least one observation id is required', 'MEM_INVALID_REQUEST')
     const body: Record<string, unknown> = { ids: request.ids }

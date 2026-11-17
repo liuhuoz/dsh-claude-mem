@@ -7,7 +7,7 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 ### Added
 
 - File context: after a read-like tool call, the plugin asks claude-mem's `file-context` hook what memory already knows about that file and attaches the answer to the next step through `agent/pre-step`. Covers `read` by default, plus `ops_bash` / `pwsh` / `grep` / `glob` when enabled.
-- `fileContext` and `fileContextTools` settings, both live-editable from the plugin page; the switch is off by default.
+- A read gate: when a full read targets a file at or above 32 KB and the worker already holds observations for it, `tools/pre-execute` denies the call and explains the cheaper paths (offset/limit reads, `mem_search`). Narrowed reads, prose and configuration files always pass.
 
 ### Notes
 

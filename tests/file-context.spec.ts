@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capContext, claudeToolName, msysToWin, parseHookOutput, preToolPayload } from '../src/file-context.js'
+import { capContext, claudeToolName, gateCandidate, gateReason, msysToWin, parseHookOutput, preToolPayload } from '../src/file-context.js'
 
 const call = (name: string, args: unknown) => ({ sessionId: 'session-1', cwd: 'D:/repo', name, arguments: args })
 
@@ -83,5 +83,34 @@ describe('capContext', () => {
     const capped = capContext(long, 10)
     expect(capped.startsWith('x'.repeat(10))).toBe(true)
     expect(capped).toContain('truncated')
+  })
+})
+
+describe('gateCandidate', () => {
+  it('accepts a plain full read', () => {
+    expect(gateCandidate('read', { file_path: 'D:/repo/big.ts' })).toEqual({ filePath: 'D:/repo/big.ts' })
+    expect(gateCandidate('read', { file_path: 'D:/repo/big.ts', offset: 1 })).toEqual({ filePath: 'D:/repo/big.ts' })
+  })
+
+  it('lets a narrowed read through', () => {
+    expect(gateCandidate('read', { file_path: 'D:/repo/big.ts', offset: 40 })).toBeNull()
+    expect(gateCandidate('read', { file_path: 'D:/repo/big.ts', limit: 80 })).toBeNull()
+  })
+
+  it('exempts prose and configuration, and other tools', () => {
+    expect(gateCandidate('read', { file_path: 'D:/repo/README.md' })).toBeNull()
+    expect(gateCandidate('read', { file_path: 'D:/repo/x.yaml' })).toBeNull()
+    expect(gateCandidate('grep', { file_path: 'D:/repo/big.ts' })).toBeNull()
+    expect(gateCandidate('read', {})).toBeNull()
+  })
+})
+
+describe('gateReason', () => {
+  it('names the file, its size and the way forward', () => {
+    const reason = gateReason('D:/repo/src/big.ts', 64 * 1024)
+    expect(reason).toContain('big.ts')
+    expect(reason).toContain('64 KB')
+    expect(reason).toContain('offset')
+    expect(reason).toContain('mem_search')
   })
 })
