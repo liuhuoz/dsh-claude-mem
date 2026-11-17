@@ -33,6 +33,8 @@ interface Draft {
   summarize: boolean
   workState: boolean
   autoStartWorker: boolean
+  fileContext: boolean
+  fileContextTools: string
   toolNames: string
 }
 
@@ -64,6 +66,11 @@ function toolNamesOf(value: Record<string, unknown>): string[] {
   return Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []
 }
 
+function fileContextToolsOf(value: Record<string, unknown>): string[] {
+  const list = value.fileContextTools
+  return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
+}
+
 function toDraft(value: Record<string, unknown> | undefined): Draft {
   const source = value ?? {}
   return {
@@ -73,6 +80,8 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     summarize: source.summarize === true,
     workState: source.workState !== false,
     autoStartWorker: source.autoStartWorker !== false,
+    fileContext: source.fileContext === true,
+    fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
   }
 }
@@ -86,6 +95,7 @@ function textOp(field: string, value: string): SettingsPathOpView {
 /** Turn the draft into the atomic operation set a save submits. */
 function toOperations(draft: Draft): SettingsPathOpView[] {
   const names = draft.toolNames.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
+  const contextNames = draft.fileContextTools.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
   return [
     textOp('baseUrl', draft.baseUrl),
     textOp('hookPath', draft.hookPath),
@@ -94,6 +104,8 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['workState'], value: draft.workState },
     { op: 'set', path: ['autoStartWorker'], value: draft.autoStartWorker },
     names.length === 0 ? { op: 'unset', path: ['toolFilter'] } : { op: 'set', path: ['toolFilter', 'names'], value: names },
+    { op: 'set', path: ['fileContext'], value: draft.fileContext },
+    contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
   ]
 }
 
@@ -300,6 +312,16 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('workState')}</span>
         </label>
         <span style={layout.hint}>{t('workStateHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.fileContext}
+            disabled={!writable}
+            label={t('fileContext')}
+            onChange={next => update('fileContext', next)}
+          />
+          <span>{t('fileContext')}</span>
+        </label>
+        <span style={layout.hint}>{t('fileContextHint')}</span>
       </section>
 
       <DisclosureRow
@@ -323,6 +345,16 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
             <Tag key={name}>{name}</Tag>
           ))}
         </div>
+        <label>
+          <span style={layout.label}>{t('fileContextTools')}</span>
+          <Input
+            value={draft.fileContextTools}
+            placeholder="read, ops_bash, pwsh, grep, glob"
+            disabled={!writable}
+            onChange={event => update('fileContextTools', event.target.value)}
+          />
+          <span style={{ opacity: 0.7 }}>{t('fileContextToolsHint')}</span>
+        </label>
       </DisclosureRow>
 
       <div style={layout.actions}>

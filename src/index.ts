@@ -78,6 +78,8 @@ export const Config = Schema.object({
   }).default({ names: ['read', 'write', 'edit', 'bash'] }).volatile(),
   hookPath: Schema.string().default('').volatile(),
   workState: Schema.boolean().default(true).volatile(),
+  fileContext: Schema.boolean().default(false).volatile(),
+  fileContextTools: Schema.array(Schema.string()).default(['read', 'ops_bash', 'pwsh', 'grep', 'glob']).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })
 

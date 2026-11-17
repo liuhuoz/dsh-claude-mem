@@ -1,0 +1,194 @@
+/**
+ * Phase-1 file context: turn one DSH tool call into claude-mem's PreToolUse
+ * payload, run claude-mem's own hook, and hand back the rendered context.
+ *
+ * The translation layer is deliberately thin: claude-mem keeps the path
+ * extraction, the staleness gate and the per-session dedupe, so this module only
+ * renames the tool, normalises the arguments and parses one JSON field back out.
+ * @module dsh-claude-mem/file-context
+ */
+
+import { spawn } from 'node:child_process'
+
+/** Tools whose results are turned into file context by default. */
+export const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'ops_bash', 'pwsh', 'grep', 'glob']
+
+/** Upper bound for one injected block; a single file can render tens of kilobytes. */
+export const FILE_CONTEXT_LIMIT = 4000
+
+/** How long the hook may take before the injection is abandoned. */
+export const FILE_CONTEXT_TIMEOUT_MS = 3000
+
+/** claude-mem's PreToolUse input, reduced to the fields its hook reads. */
+export interface PreToolPayload {
+  readonly session_id: string
+  readonly cwd: string
+  readonly hook_event_name: 'PreToolUse'
+  readonly tool_name: string
+  readonly tool_input: Record<string, unknown>
+}
+
+/** The parts of a tool call the translation needs, kept separate so tests need no agent. */
+export interface ToolCall {
+  readonly sessionId: string
+  readonly cwd: string
+  readonly name: string
+  readonly arguments: unknown
+}
+
+/** Anything that can answer one payload with claude-mem-rendered context. */
+export interface FileContextSource {
+  fetch(payload: PreToolPayload): Promise<string | null>
+}
+
+/** DSH tool names to the Claude Code names claude-mem's matcher and parser know. */
+export function claudeToolName(name: string): string {
+  if (name === 'read') return 'Read'
+  if (name === 'ops_bash' || name === 'pwsh' || name === 'bash' || name === 'shell') return 'Bash'
+  if (name === 'grep') return 'Grep'
+  if (name === 'glob') return 'Glob'
+  return name
+}
+
+/**
+ * Rewrite MSYS drive paths (`/d/repo/x`) into Windows form (`D:/repo/x`).
+ *
+ * Only a token boundary followed by one drive letter and a slash is rewritten,
+ * so ordinary text and URLs are left alone. claude-mem resolves paths with
+ * Node's `path` module on Windows, which cannot see the MSYS form.
+ */
+export function msysToWin(text: string): string {
+  return text.replace(/(^|[\s"'(=])\/([A-Za-z])\//g, (_match, lead: string, drive: string) => `${lead}${drive.toUpperCase()}:/`)
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === 'string' && field.length > 0 ? field : undefined
+}
+
+function optionalField(value: unknown, key: string): Record<string, string> {
+  const found = stringField(value, key)
+  return found === undefined ? {} : { [key]: found }
+}
+
+/**
+ * Translate one tool call, or answer `null` when the call carries nothing the
+ * hook could use. `Bash` keeps its command (MSYS-normalised) and adopts a
+ * `workdir` argument as the payload cwd, because claude-mem resolves relative
+ * paths against it.
+ */
+export function preToolPayload(call: ToolCall): PreToolPayload | null {
+  const tool = claudeToolName(call.name)
+  const args = call.arguments
+  let cwd = call.cwd
+  let toolInput: Record<string, unknown> | null = null
+
+  if (tool === 'Read') {
+    const filePath = stringField(args, 'file_path')
+    toolInput = filePath === undefined ? null : { file_path: filePath }
+  } else if (tool === 'Bash') {
+    const command = stringField(args, 'command')
+    toolInput = command === undefined ? null : { command: msysToWin(command) }
+    const workdir = stringField(args, 'workdir')
+    if (workdir !== undefined) cwd = workdir
+  } else if (tool === 'Grep' || tool === 'Glob') {
+    const pattern = stringField(args, 'pattern')
+    toolInput = pattern === undefined ? null : { pattern, ...optionalField(args, 'path') }
+  }
+
+  if (toolInput === null) return null
+  return {
+    session_id: call.sessionId,
+    cwd,
+    hook_event_name: 'PreToolUse',
+    tool_name: tool,
+    tool_input: toolInput,
+  }
+}
+
+/** Keep one injected block under the model-facing budget. */
+export function capContext(text: string, limit = FILE_CONTEXT_LIMIT): string {
+  const body = text.trim()
+  if (body.length <= limit) return body
+  return `${body.slice(0, limit)}\n… [claude-mem] file context truncated`
+}
+
+/** Read the single field claude-mem's hook contract exposes. */
+export function parseHookOutput(stdout: string): string | null {
+  const trimmed = stdout.trim()
+  if (trimmed.length === 0) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+  if (parsed === null || typeof parsed !== 'object') return null
+  const output = (parsed as { hookSpecificOutput?: unknown }).hookSpecificOutput
+  if (output === null || typeof output !== 'object') return null
+  const context = (output as { additionalContext?: unknown }).additionalContext
+  if (typeof context !== 'string' || context.trim().length === 0) return null
+  return capContext(context)
+}
+
+/**
+ * Run `claude-mem hook claude-code file-context` and answer with its context.
+ *
+ * Every failure mode — missing launcher, non-zero exit, timeout, malformed
+ * JSON, empty context — answers `null`; a file context is never worth breaking
+ * a tool call over.
+ */
+export class HookCliFileContext implements FileContextSource {
+  constructor(
+    private readonly launcher: string,
+    private readonly timeoutMs = FILE_CONTEXT_TIMEOUT_MS,
+  ) {}
+
+  fetch(payload: PreToolPayload): Promise<string | null> {
+    return new Promise<string | null>(resolve => {
+      let settled = false
+      const finish = (value: string | null): void => {
+        if (settled) return
+        settled = true
+        resolve(value)
+      }
+
+      let child: ReturnType<typeof spawn>
+      try {
+        child = spawn(this.launcher, ['hook', 'claude-code', 'file-context'], {
+          stdio: ['pipe', 'pipe', 'ignore'],
+          windowsHide: true,
+        })
+      } catch {
+        finish(null)
+        return
+      }
+
+      let stdout = ''
+      const timer = setTimeout(() => {
+        try {
+          child.kill()
+        } catch {
+          // Already gone: the close handler still settles the promise.
+        }
+        finish(null)
+      }, this.timeoutMs)
+
+      child.stdout?.setEncoding('utf8')
+      child.stdout?.on('data', (chunk: string) => {
+        stdout += chunk
+      })
+      child.on('error', () => {
+        clearTimeout(timer)
+        finish(null)
+      })
+      child.on('close', (code: number | null) => {
+        clearTimeout(timer)
+        finish(code === 0 ? parseHookOutput(stdout) : null)
+      })
+      child.stdin?.on('error', () => {})
+      child.stdin?.end(JSON.stringify(payload))
+    })
+  }
+}

@@ -20,6 +20,8 @@ export interface LiveSettings {
   readonly summarize: boolean
   readonly autoStartWorker: boolean
   readonly workState: boolean
+  readonly fileContext: boolean
+  readonly fileContextTools: readonly string[]
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
   readonly dedupe: boolean
@@ -35,11 +37,15 @@ const DEFAULTS = {
   summarize: true,
   autoStartWorker: true,
   workState: true,
+  fileContext: false,
   timeoutMs: 30_000,
   dedupe: true,
 } as const
 
 const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash']
+
+/** Tools that get file context when the switch is on; mirrors the schema default. */
+const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'ops_bash', 'pwsh', 'grep', 'glob']
 
 /**
  * Read a possibly-volatile field. A `.volatile()` field arrives as a cell with
@@ -64,6 +70,13 @@ function readText(value: unknown, fallback: string): string {
 function readFlag(value: unknown, fallback: boolean): boolean {
   const flag = read<unknown>(value, fallback)
   return typeof flag === 'boolean' ? flag : fallback
+}
+
+function readStringList(value: unknown, fallback: readonly string[]): readonly string[] {
+  const list = read<unknown>(value, undefined)
+  if (!Array.isArray(list)) return fallback
+  const strings = list.filter((name): name is string => typeof name === 'string')
+  return strings.length === 0 ? fallback : strings
 }
 
 function readToolNames(value: unknown): readonly string[] {
@@ -92,6 +105,8 @@ export function resolveSettings(raw: unknown): LiveSettings {
     summarize: readFlag(source.summarize, DEFAULTS.summarize),
     autoStartWorker: readFlag(source.autoStartWorker, DEFAULTS.autoStartWorker),
     workState: readFlag(source.workState, DEFAULTS.workState),
+    fileContext: readFlag(source.fileContext, DEFAULTS.fileContext),
+    fileContextTools: readStringList(source.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS),
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),

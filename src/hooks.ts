@@ -15,6 +15,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution, ToolExecutionResult, PostToolDecision } from '@deepseek-ai/dsh-tools'
+import { FILE_CONTEXT_TIMEOUT_MS, HookCliFileContext, preToolPayload } from './file-context.js'
 import { spawn } from 'node:child_process'
 import { basename } from 'node:path'
 import type { WorkerClient } from './worker.js'
@@ -138,6 +139,9 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
 /** Marker prefix for the post-compaction work-state re-injection. */
 export const WORK_STATE_MARKER = '[claude-mem] open work state'
 
+/** Marker prefix for the memory block attached after a read-like tool call. */
+export const FILE_CONTEXT_MARKER = '[claude-mem] file context'
+
 /**
  * True only when the worker returned actual open items. An empty project answers
  * "Nothing open for …" or "Nothing recorded …", which must not be injected.
@@ -186,6 +190,9 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   /** Live agents by session id, so a session event can reach the agent to inject into. */
   const agents = new Map<string, Agent>()
 
+  /** File-context fetches started for a session, consumed at its next pre-step. */
+  const pendingFileContext = new Map<string, Promise<string | null>>()
+
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     agents.set(agent.session.id, agent)
@@ -207,17 +214,26 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     void rehydrateWorkState(worker, agent)
   })
 
-  on('agent/pre-step', (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
+  on('agent/pre-step', async (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
     // Session registration and prompt capture are not optional: the row is what
     // gives an observation its context, and claude-mem exposes no switch for it
     // either. Only observation and summarization are switchable, here and there.
     recordPrompt(worker, payload.agent, payload.messages, getSettings())
-    return next()
+    const decision = await next()
+    return attachFileContext(payload.agent, decision, pendingFileContext)
   })
 
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
     if (settings.ingest) observeToolResult(exec, result, settings)
+    return next()
+  })
+
+  // File context rides a second listener so the observation path above stays untouched:
+  // this one only starts the fetch and always forwards the decision unchanged.
+  ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
+    const settings = getSettings()
+    if (settings.fileContext && !result.isError) startFileContext(exec, settings, pendingFileContext)
     return next()
   })
 
@@ -269,6 +285,51 @@ async function summarizeSession(worker: WorkerClient, agent: Agent, settings: Li
     // Summarization is best-effort.
     ensureWorkerStarted(settings)
   }
+}
+
+/** Start one file-context fetch; the result is consumed at the next pre-step. */
+function startFileContext(
+  exec: ToolExecution,
+  settings: LiveSettings,
+  pending: Map<string, Promise<string | null>>,
+): void {
+  const agent = exec.agent
+  if (agent === undefined || isSubagent(agent)) return
+  if (!settings.fileContextTools.includes(exec.name)) return
+  const header = agent.session.header
+  const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
+  const payload = preToolPayload({
+    sessionId: agent.session.id,
+    cwd,
+    name: exec.name,
+    arguments: exec.arguments,
+  })
+  if (payload === null) return
+  const source = new HookCliFileContext(hookLauncher(settings), FILE_CONTEXT_TIMEOUT_MS)
+  pending.set(agent.session.id, source.fetch(payload))
+}
+
+/**
+ * Append the answered file context to the messages entering this step. A
+ * rejected step, a missing fetch or empty context all leave the decision alone.
+ */
+async function attachFileContext(
+  agent: Agent,
+  decision: unknown,
+  pending: Map<string, Promise<string | null>>,
+): Promise<unknown> {
+  const current = decision as { kind?: string; messages?: readonly UserMessage[] } | undefined
+  if (current === undefined || current.kind !== 'enter') return decision
+  const fetch = pending.get(agent.session.id)
+  if (fetch === undefined) return decision
+  pending.delete(agent.session.id)
+  const text = await fetch.catch(() => null)
+  if (text === null || text.length === 0) return decision
+  const message: UserMessage = createUserMessage({
+    content: [{ type: 'text', text: `${FILE_CONTEXT_MARKER}\n${text}` }],
+    source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
+  })
+  return { ...current, messages: [...(current.messages ?? []), message] }
 }
 
 function projectName(agent: Agent, settings: LiveSettings): string {

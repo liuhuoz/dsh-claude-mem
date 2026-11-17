@@ -2,6 +2,18 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.6.0
+
+### Added
+
+- File context: after a read-like tool call, the plugin asks claude-mem's `file-context` hook what memory already knows about that file and attaches the answer to the next step through `agent/pre-step`. Covers `read` by default, plus `ops_bash` / `pwsh` / `grep` / `glob` when enabled.
+- `fileContext` and `fileContextTools` settings, both live-editable from the plugin page; the switch is off by default.
+
+### Notes
+
+- The translation layer only renames the tool and normalises its arguments (MSYS drive paths included); path extraction, the mtime gate and the `file_context_injections` dedupe stay in claude-mem.
+- A hook that exits non-zero, times out (3 s) or answers no `additionalContext` silently contributes nothing; a file context never fails a tool call.
+
 ## 0.5.0
 
 ### Added

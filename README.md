@@ -43,6 +43,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Record tool calls | Send every observed tool result through claude-mem's observer. |
 | Summarize turns | Write a session summary when a turn ends. |
 | Work state | Keep to-do lists across sessions: the two `work_state` tools, plus re-injecting unfinished items after the context is compacted. Off hides all three. |
+| File context | Attach what memory already knows about a file after a read-like tool call. Off by default: each new file costs one hook start (about 0.4 s). The watched tools are configurable (advanced). |
 | Observed tools | Which tools the previous switch watches (advanced). |
 
 ## Roadmap
@@ -57,7 +58,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 
 ### Hooks
 
-- [ ] **file-context** — inject the observations related to a file before `Read` / `Bash` / `Grep` / `Glob`. DSH's `tools/pre-execute` only answers allow / deny / cancel / ask, so this needs an injection path (or a `mem_file_context` tool instead).
+- [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe (0.6.0).
 - [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
 
 ### Not planned
