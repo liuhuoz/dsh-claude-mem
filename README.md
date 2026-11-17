@@ -60,6 +60,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 ### Hooks
 
 - [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe. A separate opt-in switch can also deny a full read of a large file memory already covers, with an explicit-prompt bypass (0.6.0).
+- [ ] **file-context over HTTP** — replace the hook CLI with a direct `/api/observations/by-file` read (about 0.1 s instead of 0.4 s) and own the rendering, the dedupe, the staleness gate and MSYS path handling; `FileContextSource` is already the seam. The gate's "does memory still cover this file" check gets sharper in the same pass.
 - [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
 
 ### Not planned
