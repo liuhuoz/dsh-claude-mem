@@ -14,7 +14,7 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 ### Notes
 
 - A subagent is not a memory session: the parent is what a user reads. Nothing is injected into a subagent; what it may know is the parent's or the preset's decision.
-- The child's last message and stop reason are deliberately not sent: claude-mem's own SubagentStop handler forwards only the identity, and the parent's tool result already carries both.
+- The SubagentStop payload mirrors Claude Code's input field for field, `last_assistant_message` included. claude-mem currently keeps only the identity from that payload; what it does with the rest is its own policy, not this adapter's decision. `stopReason` has no Claude Code counterpart, so it stays out.
 - `session-end` stays unimplemented: DSH has no clean session-over signal and summarising already happens on every turn.
 
 ## 0.6.0

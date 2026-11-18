@@ -54,6 +54,25 @@ interface SubagentRunStart {
 /** `subagent/end` carries the same identity plus a terminal `stopReason`. */
 interface SubagentRunEnd extends SubagentRunStart {
   readonly stopReason?: string
+  /** The run's closing message, in the shape claude-mem already reads from Claude Code. */
+  readonly lastAssistantMessage?: readonly unknown[]
+}
+
+/**
+ * Flatten a `ContentBlock[]` into the plain string Claude Code puts in
+ * `last_assistant_message`. Anything that is not text is skipped: claude-mem's
+ * own normalizer expects a string there.
+ */
+export function lastMessageText(blocks: readonly unknown[] | undefined): string | undefined {
+  if (!Array.isArray(blocks)) return undefined
+  const parts: string[] = []
+  for (const block of blocks) {
+    if (block === null || typeof block !== 'object') continue
+    const { type, text } = block as { type?: unknown; text?: unknown }
+    if (type === 'text' && typeof text === 'string' && text.trim().length > 0) parts.push(text)
+  }
+  const joined = parts.join('\n').trim()
+  return joined.length > 0 ? joined : undefined
 }
 
 /** Session header fields this module reads; the published type is narrower. */
@@ -221,13 +240,18 @@ export function subagentStopPayload(
   childSessionId: string,
   identity: SubagentIdentity,
   cwd: string | undefined,
+  lastMessage: string | undefined,
 ): Record<string, unknown> {
+  // Mirrors Claude Code's SubagentStop input, field for field. What claude-mem
+  // does with each one — today it keeps the identity and drops the message — is
+  // its own policy, not something this adapter decides.
   return {
     session_id: identity.parentSessionId,
     cwd: cwd !== undefined && cwd.length > 0 ? cwd : process.cwd(),
     hook_event_name: 'SubagentStop',
     agent_id: childSessionId,
     ...identity.agentType === undefined ? {} : { agent_type: identity.agentType },
+    ...lastMessage === undefined ? {} : { last_assistant_message: lastMessage },
   }
 }
 
@@ -236,9 +260,10 @@ function recordSubagentStop(
   identity: SubagentIdentity,
   settings: LiveSettings,
   cwd: string | undefined,
+  lastMessage: string | undefined,
 ): void {
   if (!settings.subagents) return
-  const payload = subagentStopPayload(childSessionId, identity, cwd)
+  const payload = subagentStopPayload(childSessionId, identity, cwd, lastMessage)
   try {
     const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'subagent-stop'], {
       stdio: ['pipe', 'ignore', 'ignore'],
@@ -369,7 +394,14 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     if (identity === undefined) return
     subagents.delete(agent.session.id)
     // Fallback for a run that vanished without `subagent/end` — a thrown run.
-    recordSubagentStop(agent.session.id, withAgentType(identity, agent), getSettings(), parentCwd(agents, identity.parentSessionId))
+    // A disposed run never reached `subagent/end`, so it has no closing message.
+    recordSubagentStop(
+      agent.session.id,
+      withAgentType(identity, agent),
+      getSettings(),
+      parentCwd(agents, identity.parentSessionId),
+      undefined,
+    )
   })
 
   // A delegated run is tracked from start to end only so its work is filed
@@ -397,6 +429,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
       withAgentType(identity, child),
       getSettings(),
       parentCwd(agents, identity.parentSessionId),
+      lastMessageText(info.lastAssistantMessage),
     )
   })
 

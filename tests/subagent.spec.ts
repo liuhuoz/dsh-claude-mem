@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { attributionOf, hookToolName, rememberSubagent, subagentStopPayload, type SubagentIdentity } from '../src/hooks.js'
+import { attributionOf, hookToolName, lastMessageText, rememberSubagent, subagentStopPayload, type SubagentIdentity } from '../src/hooks.js'
 
 /** The pieces of Agent this module reads: a session id plus its header. */
 function fakeAgent(id: string, header: Record<string, unknown>): Agent {
@@ -71,22 +71,39 @@ describe('rememberSubagent', () => {
   })
 })
 
+describe('lastMessageText', () => {
+  it('joins the text blocks of a closing message', () => {
+    expect(lastMessageText([
+      { type: 'text', text: 'first line' },
+      { type: 'image', mediaType: 'image/png' },
+      { type: 'text', text: 'second line' },
+    ])).toBe('first line\nsecond line')
+  })
+
+  it('answers undefined for nothing to say', () => {
+    expect(lastMessageText(undefined)).toBeUndefined()
+    expect(lastMessageText([])).toBeUndefined()
+    expect(lastMessageText([{ type: 'text', text: '   ' }])).toBeUndefined()
+  })
+})
+
 describe('subagentStopPayload', () => {
-  it('carries only the identity claude-mem reads', () => {
-    const payload = subagentStopPayload('child-1', { parentSessionId: 'parent-1', agentType: 'explore' }, 'C:/work')
+  it('mirrors the Claude Code SubagentStop input', () => {
+    const payload = subagentStopPayload('child-1', { parentSessionId: 'parent-1', agentType: 'explore' }, 'C:/work', 'the answer')
     expect(payload).toEqual({
       session_id: 'parent-1',
       cwd: 'C:/work',
       hook_event_name: 'SubagentStop',
       agent_id: 'child-1',
       agent_type: 'explore',
+      last_assistant_message: 'the answer',
     })
-    expect(payload).not.toHaveProperty('last_assistant_message')
   })
 
   it('omits an unknown agent type and falls back to the working directory', () => {
-    const payload = subagentStopPayload('child-2', { parentSessionId: 'parent-2' }, undefined)
+    const payload = subagentStopPayload('child-2', { parentSessionId: 'parent-2' }, undefined, undefined)
     expect(payload.agent_type).toBeUndefined()
+    expect(payload.last_assistant_message).toBeUndefined()
     expect(payload.cwd).toBe(process.cwd())
   })
 })
