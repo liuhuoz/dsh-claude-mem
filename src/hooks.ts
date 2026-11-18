@@ -229,6 +229,23 @@ export function rememberSubagent(agent: Agent, subagents: Map<string, SubagentId
  * reach memory as the parent's tool result, and claude-mem drops them here too.
  * Best-effort: a failed archive never breaks the parent turn.
  */
+/**
+ * Run an archive once per child.
+ *
+ * `subagent/end` and `agent/disposed` describe the same run from two angles, and
+ * claude-mem files each stop as a new work-state entry rather than replacing one,
+ * so a second call leaves a duplicate behind.
+ */
+function archiveOnce(archived: Set<string>, childSessionId: string, archive: () => void): void {
+  if (archived.has(childSessionId)) return
+  archived.add(childSessionId)
+  if (archived.size > 512) {
+    const oldest = archived.values().next().value
+    if (oldest !== undefined) archived.delete(oldest)
+  }
+  archive()
+}
+
 /** Prefer the tracked type, then the child session header the agent still holds. */
 function withAgentType(identity: SubagentIdentity, child: Agent | undefined): SubagentIdentity {
   if (identity.agentType !== undefined) return identity
@@ -367,6 +384,13 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   /** Delegated runs by child session id; their work is filed against the parent. */
   const subagents = new Map<string, SubagentIdentity>()
 
+  /**
+   * Children already archived. `subagent/end` and `agent/disposed` can both fire
+   * for one run, and a late `agent/created` re-registers the identity in between,
+   * so the map alone cannot tell that the archive already happened.
+   */
+  const archived = new Set<string>()
+
   /** File-context fetches started for a session, consumed at its next pre-step. */
   const pendingFileContext = new Map<string, Promise<string | null>>()
 
@@ -393,15 +417,17 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const identity = subagents.get(agent.session.id)
     if (identity === undefined) return
     subagents.delete(agent.session.id)
-    // Fallback for a run that vanished without `subagent/end` — a thrown run.
-    // A disposed run never reached `subagent/end`, so it has no closing message.
-    recordSubagentStop(
-      agent.session.id,
-      withAgentType(identity, agent),
-      getSettings(),
-      parentCwd(agents, identity.parentSessionId),
-      undefined,
-    )
+    // A disposed run normally already reached `subagent/end`; this path covers a
+    // run that vanished without one and has no closing message.
+    archiveOnce(archived, agent.session.id, () => {
+      recordSubagentStop(
+        agent.session.id,
+        withAgentType(identity, agent),
+        getSettings(),
+        parentCwd(agents, identity.parentSessionId),
+        undefined,
+      )
+    })
   })
 
   // A delegated run is tracked from start to end only so its work is filed
@@ -419,18 +445,21 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   on('subagent/end', (info: SubagentRunEnd) => {
     if (typeof info?.id !== 'string') return
-    const known = subagents.get(info.id)
+    const childId = info.id
+    const known = subagents.get(childId)
     const identity = known ?? (typeof info.parentSessionId === 'string' ? { parentSessionId: info.parentSessionId } : undefined)
     if (identity === undefined) return
-    const child = agents.get(info.id)
-    subagents.delete(info.id)
-    recordSubagentStop(
-      info.id,
-      withAgentType(identity, child),
-      getSettings(),
-      parentCwd(agents, identity.parentSessionId),
-      lastMessageText(info.lastAssistantMessage),
-    )
+    const child = agents.get(childId)
+    subagents.delete(childId)
+    archiveOnce(archived, childId, () => {
+      recordSubagentStop(
+        childId,
+        withAgentType(identity, child),
+        getSettings(),
+        parentCwd(agents, identity.parentSessionId),
+        lastMessageText(info.lastAssistantMessage),
+      )
+    })
   })
 
   // DSH compacts in place instead of clearing; rehydrate the open work state once
