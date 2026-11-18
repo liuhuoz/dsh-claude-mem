@@ -2,6 +2,21 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.7.0
+
+### Added
+
+- Subagent observation: tool calls made inside a delegated run are stored on the parent session and tagged with `agent_id` / `agent_type`, so memory keeps the work without pretending the subagent is a session of its own.
+- Subagent archiving: `subagent/end` drives claude-mem's own `SubagentStop` hook, which records the run in its `agent-lifecycle` work state. A run that disappears without `end` (a thrown run) is archived on `agent/disposed`.
+- `subagent` and `subagent_fork` joined the observed-tool defaults, so the parent's tool result — the subagent's answer, including a failure — is recorded like any other call.
+- A `subagents` switch (on by default) governs all three stages above.
+
+### Notes
+
+- A subagent is not a memory session: the parent is what a user reads. Nothing is injected into a subagent; what it may know is the parent's or the preset's decision.
+- The child's last message and stop reason are deliberately not sent: claude-mem's own SubagentStop handler forwards only the identity, and the parent's tool result already carries both.
+- `session-end` stays unimplemented: DSH has no clean session-over signal and summarising already happens on every turn.
+
 ## 0.6.0
 
 ### Added

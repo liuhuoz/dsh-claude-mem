@@ -45,6 +45,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Work state | Keep to-do lists across sessions: the two `work_state` tools, plus re-injecting unfinished items after the context is compacted. Off hides all three. |
 | File context | Attach what memory already knows about a file after a read-like tool call. Off by default: each new file costs one hook start (about 0.4 s). The watched tools are configurable (advanced). |
 | Refuse full reads | Optional, off by default: deny a full read of a 32 KB+ file memory already covers and point at `offset`/`limit` reads and `mem_search`. DSH already caps one read at about 50 KB, so the gain is small; a file named in the user's prompt always passes. |
+| Subagents | A delegated run’s tool calls are stored on the parent session and tagged with its agent id, and its end is archived. The subagent gets no memory context of its own: what it may know is the parent’s decision. |
 | Observed tools | Which tools the previous switch watches (advanced). |
 
 ## Roadmap
@@ -62,7 +63,8 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 #### Hooks
 
 - [x] **file-context** — attach the observations related to a file after `read`, and optionally after `ops_bash` / `pwsh` / `grep` / `glob`. DSH's `tools/pre-execute` has no injection slot, so the block rides `agent/pre-step`; claude-mem's own hook keeps the path extraction, the staleness gate and the per-session dedupe. A separate opt-in switch can also deny a full read of a large file memory already covers, with an explicit-prompt bypass (0.6.0).
-- [ ] **session-end / subagent-stop** — archive and summarise when a session or a subagent ends.
+- [x] **subagent-stop** — a delegated run’s tool calls are stored on the parent session, tagged with its agent id, and its end is archived through claude-mem’s own `SubagentStop` hook (0.7.0). Nothing is injected into the subagent: what it may know is the parent’s decision.
+- [ ] **session-end** — deliberately not implemented. DSH has no clean “session over” signal (`session/disposed` is storage teardown), claude-mem’s own DSH adapter treats `turn/end` as the end, and this plugin already summarises on `agent/turn-stopping`.
 - [ ] **Failure observations** — claude-mem records a failed tool call through `PostToolUseFailure` (`is_error: true`). The plugin's payload is always `PostToolUse` with `is_error: false`, and a result carrying `isError` never reaches the hook, so failed tool calls are never recorded.
 - [ ] **Post-compaction context** — the compaction branch of `SessionStart`: claude-mem re-injects the session-start context when a session continues from a compaction; the plugin only re-injects the open work state.
 

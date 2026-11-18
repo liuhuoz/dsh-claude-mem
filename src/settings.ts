@@ -23,6 +23,7 @@ export interface LiveSettings {
   readonly fileContext: boolean
   readonly fileContextGate: boolean
   readonly fileContextTools: readonly string[]
+  readonly subagents: boolean
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
   readonly dedupe: boolean
@@ -40,11 +41,12 @@ const DEFAULTS = {
   workState: true,
   fileContext: false,
   fileContextGate: false,
+  subagents: true,
   timeoutMs: 30_000,
   dedupe: true,
 } as const
 
-const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash']
+const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']
 
 /** Tools that get file context when the switch is on; mirrors the schema default. */
 const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'ops_bash', 'pwsh', 'grep', 'glob']
@@ -110,6 +112,7 @@ export function resolveSettings(raw: unknown): LiveSettings {
     fileContext: readFlag(source.fileContext, DEFAULTS.fileContext),
     fileContextGate: readFlag(source.fileContextGate, DEFAULTS.fileContextGate),
     fileContextTools: readStringList(source.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS),
+    subagents: readFlag(source.subagents, DEFAULTS.subagents),
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),

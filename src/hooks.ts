@@ -28,6 +28,47 @@ export type SettingsSource = () => LiveSettings
 /** Untyped listener registration: the `agent/*` event map is version-dependent. */
 type OnAny = (event: string, handler: (...args: any[]) => any) => void
 
+/** Where one observed tool result is filed, and under which agent it ran. */
+interface ToolAttribution {
+  /** Content session the observation belongs to: the parent for a subagent. */
+  readonly sessionId: string
+  /** Subagent identity, present only for work done inside a delegated run. */
+  readonly agentId?: string
+  readonly agentType?: string
+}
+
+/** A delegated run as the plugin tracks it: child session id to its parent. */
+export interface SubagentIdentity {
+  readonly parentSessionId: string
+  readonly agentType?: string
+  readonly runId?: string
+}
+
+/** `subagent/start` payload; the DSH session header is the fallback source. */
+interface SubagentRunStart {
+  readonly id?: string
+  readonly parentSessionId?: string
+  readonly runId?: string
+}
+
+/** `subagent/end` carries the same identity plus a terminal `stopReason`. */
+interface SubagentRunEnd extends SubagentRunStart {
+  readonly stopReason?: string
+}
+
+/** Session header fields this module reads; the published type is narrower. */
+interface LooseHeader {
+  readonly cwd?: string
+  readonly origin?: string
+  readonly delegationDepth?: number
+  readonly parentSessionId?: string
+  readonly agentPreset?: string
+}
+
+function headerOf(agent: Agent): LooseHeader {
+  return agent.session.header as unknown as LooseHeader
+}
+
 let workerBootAt = 0
 
 /**
@@ -64,11 +105,14 @@ function hookLauncher(settings: LiveSettings): string {
 }
 
 /** Claude Code tool names, so claude-mem's skip and filtering rules keep matching. */
-function hookToolName(name: string): string {
+export function hookToolName(name: string): string {
   if (name === 'ops_bash' || name === 'pwsh' || name === 'bash' || name === 'shell') return 'Bash'
   if (name === 'read') return 'Read'
   if (name === 'write') return 'Write'
   if (name === 'edit') return 'Edit'
+  // A delegated run is a tool call from the parent's point of view, and
+  // claude-mem already renders Claude Code's Task as "Task(subagent_type)".
+  if (name === 'subagent' || name === 'subagent_fork') return 'Task'
   return name
 }
 
@@ -77,17 +121,27 @@ function hookToolName(name: string): string {
  * launcher runs the observer model, produces a semantic observation, and
  * attributes it to the real content session.
  */
-function recordToolUse(exec: ToolExecution, agent: Agent, text: string, settings: LiveSettings): void {
+function recordToolUse(
+  exec: ToolExecution,
+  agent: Agent,
+  text: string,
+  settings: LiveSettings,
+  attribution: ToolAttribution,
+): void {
   const header = agent.session.header
   const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
   const payload = {
-    session_id: agent.session.id,
+    session_id: attribution.sessionId,
     transcript_path: '',
     cwd,
     hook_event_name: 'PostToolUse',
     tool_name: hookToolName(exec.name),
     tool_input: exec.arguments ?? {},
     tool_response: { content: [{ type: 'text', text }], is_error: false },
+    // Subagent work is filed against the parent session and labelled, never as a
+    // session of its own: the parent is what the user reads.
+    ...attribution.agentId === undefined ? {} : { agent_id: attribution.agentId },
+    ...attribution.agentType === undefined ? {} : { agent_type: attribution.agentType },
   }
   try {
     const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'observation'], {
@@ -101,6 +155,85 @@ function recordToolUse(exec: ToolExecution, agent: Agent, text: string, settings
     child.stdin.end(JSON.stringify(payload))
   } catch {
     ensureWorkerStarted(settings)
+  }
+}
+
+/**
+ * File one tool result under the session that owns it.
+ *
+ * A delegated run never becomes a session of its own: its work is filed against
+ * the parent with `agent_id`/`agent_type`, which is exactly the shape claude-mem
+ * already stores for Claude Code subagents.
+ */
+export function attributionOf(agent: Agent, subagents: Map<string, SubagentIdentity>): ToolAttribution {
+  const childId = agent.session.id
+  const identity = subagents.get(childId)
+  const header = headerOf(agent)
+  const parentSessionId = identity?.parentSessionId ?? header.parentSessionId
+  if (!isSubagent(agent) || parentSessionId === undefined) return { sessionId: childId }
+  return {
+    sessionId: parentSessionId,
+    agentId: childId,
+    ...agentTypeOf(identity, header) === undefined ? {} : { agentType: agentTypeOf(identity, header) },
+  }
+}
+
+function agentTypeOf(identity: SubagentIdentity | undefined, header: LooseHeader): string | undefined {
+  const type = identity?.agentType ?? header.agentPreset
+  return typeof type === 'string' && type.length > 0 ? type : undefined
+}
+
+/** Remember a delegated run from its session header, when `subagent/start` has not arrived yet. */
+function rememberSubagent(agent: Agent, subagents: Map<string, SubagentIdentity>): void {
+  if (subagents.has(agent.session.id)) return
+  const header = headerOf(agent)
+  if (header.parentSessionId === undefined) return
+  const agentType = agentTypeOf(undefined, header)
+  subagents.set(agent.session.id, {
+    parentSessionId: header.parentSessionId,
+    ...agentType === undefined ? {} : { agentType },
+  })
+}
+
+/**
+ * Archive the end of a delegated run through claude-mem's own SubagentStop hook.
+ *
+ * Only the identity is sent: the child's last message and stop reason already
+ * reach memory as the parent's tool result, and claude-mem drops them here too.
+ * Best-effort: a failed archive never breaks the parent turn.
+ */
+export function subagentStopPayload(
+  childSessionId: string,
+  identity: SubagentIdentity,
+  cwd: string | undefined,
+): Record<string, unknown> {
+  return {
+    session_id: identity.parentSessionId,
+    cwd: cwd !== undefined && cwd.length > 0 ? cwd : process.cwd(),
+    hook_event_name: 'SubagentStop',
+    agent_id: childSessionId,
+    ...identity.agentType === undefined ? {} : { agent_type: identity.agentType },
+  }
+}
+
+function recordSubagentStop(
+  childSessionId: string,
+  identity: SubagentIdentity,
+  settings: LiveSettings,
+  cwd: string | undefined,
+): void {
+  if (!settings.subagents) return
+  const payload = subagentStopPayload(childSessionId, identity, cwd)
+  try {
+    const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'subagent-stop'], {
+      stdio: ['pipe', 'ignore', 'ignore'],
+      windowsHide: true,
+    })
+    child.on('error', () => {})
+    child.stdin.on('error', () => {})
+    child.stdin.end(JSON.stringify(payload))
+  } catch {
+    // Archiving is best-effort, like every other hook this module drives.
   }
 }
 
@@ -191,6 +324,9 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   /** Live agents by session id, so a session event can reach the agent to inject into. */
   const agents = new Map<string, Agent>()
 
+  /** Delegated runs by child session id; their work is filed against the parent. */
+  const subagents = new Map<string, SubagentIdentity>()
+
   /** File-context fetches started for a session, consumed at its next pre-step. */
   const pendingFileContext = new Map<string, Promise<string | null>>()
 
@@ -200,14 +336,47 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     agents.set(agent.session.id, agent)
-    if (isSubagent(agent)) return
+    if (isSubagent(agent)) {
+      // A child session is the fallback identity source: forks never emit
+      // `subagent/start`, and the header already names the creator.
+      rememberSubagent(agent, subagents)
+      return
+    }
     void seedSessionContext(worker, agent, getSettings())
   })
 
   on('agent/disposed', (payload: { agent?: Agent }) => {
     if (payload.agent === undefined) return
-    agents.delete(payload.agent.session.id)
-    lastPrompt.delete(payload.agent.session.id)
+    const { agent } = payload
+    agents.delete(agent.session.id)
+    lastPrompt.delete(agent.session.id)
+    const identity = subagents.get(agent.session.id)
+    if (identity === undefined) return
+    subagents.delete(agent.session.id)
+    // Fallback for a run that vanished without `subagent/end` — a thrown run.
+    recordSubagentStop(agent.session.id, identity, getSettings(), parentCwd(agents, identity.parentSessionId))
+  })
+
+  // A delegated run is tracked from start to end only so its work is filed
+  // against the parent. Nothing is injected into the child: what it may know is
+  // the parent's decision, not this plugin's.
+  on('subagent/start', (info: SubagentRunStart) => {
+    if (!getSettings().subagents) return
+    if (typeof info?.id !== 'string' || typeof info.parentSessionId !== 'string') return
+    if (subagents.has(info.id)) return
+    subagents.set(info.id, {
+      parentSessionId: info.parentSessionId,
+      ...info.runId === undefined ? {} : { runId: info.runId },
+    })
+  })
+
+  on('subagent/end', (info: SubagentRunEnd) => {
+    if (typeof info?.id !== 'string') return
+    const known = subagents.get(info.id)
+    const identity = known ?? (typeof info.parentSessionId === 'string' ? { parentSessionId: info.parentSessionId } : undefined)
+    if (identity === undefined) return
+    subagents.delete(info.id)
+    recordSubagentStop(info.id, identity, getSettings(), parentCwd(agents, identity.parentSessionId))
   })
 
   // DSH compacts in place instead of clearing; rehydrate the open work state once
@@ -242,7 +411,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
-    if (settings.ingest) observeToolResult(exec, result, settings)
+    if (settings.ingest) observeToolResult(exec, result, settings, subagents)
     return next()
   })
 
@@ -284,14 +453,23 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, settings: 
   }
 }
 
-function observeToolResult(exec: ToolExecution, result: Readonly<ToolExecutionResult>, settings: LiveSettings): void {
+function observeToolResult(
+  exec: ToolExecution,
+  result: Readonly<ToolExecutionResult>,
+  settings: LiveSettings,
+  subagents: Map<string, SubagentIdentity>,
+): void {
   if (result.isError) return
   if (!settings.toolFilter.names.includes(exec.name)) return
   const agent = exec.agent
   if (agent === undefined) return
+  const delegated = isSubagent(agent)
+  // With the switch off a subagent takes no part in memory at all — neither its
+  // own work nor a bare child session it never registered.
+  if (delegated && !settings.subagents) return
   const text = resultContentText(result.content)
   if (text.length === 0) return
-  recordToolUse(exec, agent, text, settings)
+  recordToolUse(exec, agent, text, settings, attributionOf(agent, subagents))
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
@@ -387,6 +565,14 @@ async function attachFileContext(
     source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
   })
   return { ...current, messages: [...(current.messages ?? []), message] }
+}
+
+/** Working directory of a parent session, used as the SubagentStop payload's cwd. */
+function parentCwd(agents: Map<string, Agent>, parentSessionId: string): string | undefined {
+  const parent = agents.get(parentSessionId)
+  if (parent === undefined) return undefined
+  const cwd = headerOf(parent).cwd
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
 }
 
 function projectName(agent: Agent, settings: LiveSettings): string {

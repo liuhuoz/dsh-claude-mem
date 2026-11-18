@@ -74,12 +74,13 @@ export const Config = Schema.object({
   ingest: Schema.boolean().default(true).volatile(),
   summarize: Schema.boolean().default(true).volatile(),
   toolFilter: Schema.object({
-    names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash']),
-  }).default({ names: ['read', 'write', 'edit', 'bash'] }).volatile(),
+    names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']),
+  }).default({ names: ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork'] }).volatile(),
   hookPath: Schema.string().default('').volatile(),
   workState: Schema.boolean().default(true).volatile(),
   fileContext: Schema.boolean().default(false).volatile(),
   fileContextGate: Schema.boolean().default(false).volatile(),
+  subagents: Schema.boolean().default(true).volatile(),
   fileContextTools: Schema.array(Schema.string()).default(['read', 'ops_bash', 'pwsh', 'grep', 'glob']).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })

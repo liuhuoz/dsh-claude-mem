@@ -52,7 +52,12 @@ describe('resolveSettings', () => {
     expect(settings.autoStartWorker).toBe(true)
     expect(settings.timeoutMs).toBe(30_000)
     expect(settings.dedupe).toBe(true)
-    expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
+    expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork'])
+  })
+
+  it('defaults subagent observation on and unwraps its volatile cell', () => {
+    expect(resolveSettings({}).subagents).toBe(true)
+    expect(resolveSettings({ subagents: cell(false) }).subagents).toBe(false)
   })
 
   it('defaults work state on and unwraps its volatile cell', () => {
@@ -67,9 +72,10 @@ describe('resolveSettings', () => {
   })
 
   it('keeps the default tool list when the filter is empty or malformed', () => {
-    expect(resolveSettings({ toolFilter: { names: [] } }).toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
-    expect(resolveSettings({ toolFilter: { names: 'read' } }).toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
-    expect(resolveSettings({ toolFilter: null }).toolFilter.names).toEqual(['read', 'write', 'edit', 'bash'])
+    const defaults = ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']
+    expect(resolveSettings({ toolFilter: { names: [] } }).toolFilter.names).toEqual(defaults)
+    expect(resolveSettings({ toolFilter: { names: 'read' } }).toolFilter.names).toEqual(defaults)
+    expect(resolveSettings({ toolFilter: null }).toolFilter.names).toEqual(defaults)
   })
 })
 
@@ -98,7 +104,7 @@ describe('Config schema', () => {
    * shipped as "unavailable".
    */
   it('marks every field the page edits as volatile', () => {
-    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextGate', 'fileContextTools']
+    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextGate', 'fileContextTools', 'subagents']
     for (const field of pageFields) {
       expect(nodeOf(field)?.meta?.volatile, `${field} must be volatile`).toBe(true)
     }

@@ -35,6 +35,7 @@ interface Draft {
   autoStartWorker: boolean
   fileContext: boolean
   fileContextGate: boolean
+  subagents: boolean
   fileContextTools: string
   toolNames: string
 }
@@ -83,6 +84,7 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     autoStartWorker: source.autoStartWorker !== false,
     fileContext: source.fileContext === true,
     fileContextGate: source.fileContextGate === true,
+    subagents: source.subagents !== false,
     fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
   }
@@ -108,6 +110,7 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     names.length === 0 ? { op: 'unset', path: ['toolFilter'] } : { op: 'set', path: ['toolFilter', 'names'], value: names },
     { op: 'set', path: ['fileContext'], value: draft.fileContext },
     { op: 'set', path: ['fileContextGate'], value: draft.fileContextGate },
+    { op: 'set', path: ['subagents'], value: draft.subagents },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
   ]
 }
@@ -335,6 +338,16 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('fileContextGate')}</span>
         </label>
         <span style={layout.hint}>{t('fileContextGateHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.subagents}
+            disabled={!writable}
+            label={t('subagents')}
+            onChange={next => update('subagents', next)}
+          />
+          <span>{t('subagents')}</span>
+        </label>
+        <span style={layout.hint}>{t('subagentsHint')}</span>
       </section>
 
       <DisclosureRow
