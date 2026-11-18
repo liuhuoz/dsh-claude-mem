@@ -184,9 +184,17 @@ function agentTypeOf(identity: SubagentIdentity | undefined, header: LooseHeader
 }
 
 /** Remember a delegated run from its session header, when `subagent/start` has not arrived yet. */
-function rememberSubagent(agent: Agent, subagents: Map<string, SubagentIdentity>): void {
-  if (subagents.has(agent.session.id)) return
+export function rememberSubagent(agent: Agent, subagents: Map<string, SubagentIdentity>): void {
   const header = headerOf(agent)
+  const existing = subagents.get(agent.session.id)
+  // `subagent/start` carries no agent type, so a later session header completes
+  // an entry it created first.
+  if (existing !== undefined) {
+    if (existing.agentType !== undefined) return
+    const agentType = agentTypeOf(undefined, header)
+    if (agentType !== undefined) subagents.set(agent.session.id, { ...existing, agentType })
+    return
+  }
   if (header.parentSessionId === undefined) return
   const agentType = agentTypeOf(undefined, header)
   subagents.set(agent.session.id, {
@@ -202,6 +210,13 @@ function rememberSubagent(agent: Agent, subagents: Map<string, SubagentIdentity>
  * reach memory as the parent's tool result, and claude-mem drops them here too.
  * Best-effort: a failed archive never breaks the parent turn.
  */
+/** Prefer the tracked type, then the child session header the agent still holds. */
+function withAgentType(identity: SubagentIdentity, child: Agent | undefined): SubagentIdentity {
+  if (identity.agentType !== undefined) return identity
+  const agentType = child === undefined ? undefined : agentTypeOf(undefined, headerOf(child))
+  return agentType === undefined ? identity : { ...identity, agentType }
+}
+
 export function subagentStopPayload(
   childSessionId: string,
   identity: SubagentIdentity,
@@ -354,7 +369,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     if (identity === undefined) return
     subagents.delete(agent.session.id)
     // Fallback for a run that vanished without `subagent/end` — a thrown run.
-    recordSubagentStop(agent.session.id, identity, getSettings(), parentCwd(agents, identity.parentSessionId))
+    recordSubagentStop(agent.session.id, withAgentType(identity, agent), getSettings(), parentCwd(agents, identity.parentSessionId))
   })
 
   // A delegated run is tracked from start to end only so its work is filed
@@ -375,8 +390,14 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const known = subagents.get(info.id)
     const identity = known ?? (typeof info.parentSessionId === 'string' ? { parentSessionId: info.parentSessionId } : undefined)
     if (identity === undefined) return
+    const child = agents.get(info.id)
     subagents.delete(info.id)
-    recordSubagentStop(info.id, identity, getSettings(), parentCwd(agents, identity.parentSessionId))
+    recordSubagentStop(
+      info.id,
+      withAgentType(identity, child),
+      getSettings(),
+      parentCwd(agents, identity.parentSessionId),
+    )
   })
 
   // DSH compacts in place instead of clearing; rehydrate the open work state once

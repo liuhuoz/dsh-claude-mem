@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { attributionOf, hookToolName, subagentStopPayload, type SubagentIdentity } from '../src/hooks.js'
+import { attributionOf, hookToolName, rememberSubagent, subagentStopPayload, type SubagentIdentity } from '../src/hooks.js'
 
 /** The pieces of Agent this module reads: a session id plus its header. */
 function fakeAgent(id: string, header: Record<string, unknown>): Agent {
@@ -48,6 +48,26 @@ describe('attributionOf', () => {
   it('omits the type when neither source has one', () => {
     const agent = fakeAgent('child-4', { origin: 'subagent', parentSessionId: 'parent-4' })
     expect(attributionOf(agent, new Map())).toEqual({ sessionId: 'parent-4', agentId: 'child-4' })
+  })
+})
+
+describe('rememberSubagent', () => {
+  it('registers a child from its header when start never arrived', () => {
+    const subagents = new Map<string, SubagentIdentity>()
+    rememberSubagent(fakeAgent('child-1', { origin: 'subagent', parentSessionId: 'parent-1', agentPreset: 'explore' }), subagents)
+    expect(subagents.get('child-1')).toEqual({ parentSessionId: 'parent-1', agentType: 'explore' })
+  })
+
+  it('completes an entry that subagent/start created without a type', () => {
+    const subagents = new Map<string, SubagentIdentity>([['child-2', { parentSessionId: 'parent-2', runId: 'run-2' }]])
+    rememberSubagent(fakeAgent('child-2', { origin: 'subagent', parentSessionId: 'parent-2', agentPreset: 'review' }), subagents)
+    expect(subagents.get('child-2')).toEqual({ parentSessionId: 'parent-2', runId: 'run-2', agentType: 'review' })
+  })
+
+  it('never replaces a known type', () => {
+    const subagents = new Map<string, SubagentIdentity>([['child-3', { parentSessionId: 'parent-3', agentType: 'tracked' }]])
+    rememberSubagent(fakeAgent('child-3', { origin: 'subagent', parentSessionId: 'parent-3', agentPreset: 'header' }), subagents)
+    expect(subagents.get('child-3')?.agentType).toBe('tracked')
   })
 })
 
