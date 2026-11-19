@@ -1,13 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import {
-  McpClient,
-  composeToolchain,
-  locateMcpServer,
-  withToolchainEnv,
-} from '../src/mcp.js'
+import { describe, expect, it } from 'vitest'
+import { McpClient } from '../src/mcp.js'
 
 const FIXTURE = `
 const readline = require('node:readline')
@@ -18,7 +13,14 @@ rl.on('line', line => {
   try { message = JSON.parse(line) } catch { return }
   if (message.method === 'initialize') {
     process.stdout.write('a line that is not JSON\\n')
-    send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'fixture', version: '0' } } })
+    send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fixture', version: '0' } } })
+    return
+  }
+  if (message.method === 'tools/list') {
+    send({ jsonrpc: '2.0', id: message.id, result: { tools: [
+      { name: 'echo', description: 'Echo arguments back' },
+      { name: 'pwd' },
+    ] } })
     return
   }
   if (message.method !== 'tools/call') return
@@ -33,138 +35,80 @@ rl.on('line', line => {
 })
 `
 
-const dirs: string[] = []
-
 function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'mcp-spec-'))
-  dirs.push(dir)
-  return dir
+  return mkdtempSync(join(tmpdir(), 'mcp-spec-'))
 }
 
-function fixtureServer(dir: string): string {
+/** The caller owns the command line: a fixture server is just node plus a file. */
+function fixture(dir: string): McpClient {
   const script = join(dir, 'fixture-server.cjs')
   writeFileSync(script, FIXTURE, 'utf8')
-  return script
+  return new McpClient({ command: process.execPath, args: [script], env: process.env })
 }
-
-afterEach(() => {
-  // Temp fixtures are small; the OS cleans the temp root.
-})
-
-describe('locateMcpServer', () => {
-  it('prefers an explicit path and then the newest cache version', () => {
-    const home = scratch()
-    const cache = join(home, '.claude', 'plugins', 'cache', 'thedotmack', 'claude-mem')
-    for (const version of ['15.19.0', '16.0.0']) {
-      mkdirSync(join(cache, version, 'scripts'), { recursive: true })
-      writeFileSync(join(cache, version, 'scripts', 'mcp-server.cjs'), '', 'utf8')
-    }
-    const env = { PATH: '' } as NodeJS.ProcessEnv
-    expect(locateMcpServer('', { env, home })).toBe(join(cache, '16.0.0', 'scripts', 'mcp-server.cjs'))
-
-    const explicit = join(home, 'elsewhere.cjs')
-    writeFileSync(explicit, '', 'utf8')
-    expect(locateMcpServer(explicit, { env, home })).toBe(explicit)
-  })
-
-  it('answers undefined when nothing is installed', () => {
-    const home = scratch()
-    expect(locateMcpServer('', { env: { PATH: '' } as NodeJS.ProcessEnv, home })).toBeUndefined()
-  })
-})
-
-describe('toolchain environment', () => {
-  it('composes MSVC and SDK directories', () => {
-    const toolchain = composeToolchain('C:/msvc/14.44', 'C:/Kits/10', '10.0.26100.0')
-    expect(toolchain.path[0]).toContain('Hostx64')
-    expect(toolchain.include[0]).toContain('msvc')
-    expect(toolchain.lib[0]).toContain('x64')
-  })
-
-  it('prepends and never replaces the host environment', () => {
-    const toolchain = composeToolchain('C:/msvc', 'C:/kits', '10.0.1')
-    const env = withToolchainEnv({ PATH: 'C:/windows', INCLUDE: 'C:/old', LIB: 'C:/oldlib', HOME: 'x' } as NodeJS.ProcessEnv, toolchain)
-    expect(env.PATH?.toLowerCase().startsWith(toolchain.path[0]!.toLowerCase())).toBe(true)
-    expect(env.PATH).toContain('C:/windows')
-    expect(env.INCLUDE).toContain('C:/old')
-    expect(env.LIB).toContain('C:/oldlib')
-    expect(env.HOME).toBe('x')
-  })
-})
 
 describe('McpClient', () => {
   it('initializes and answers one tool call, ignoring junk lines', async () => {
     const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    const result = await client.callTool('echo', { query: 'hooks' }, { cwd: dir, timeoutMs: 10_000 })
+    const result = await fixture(dir).callTool('echo', { query: 'hooks' }, { cwd: dir, timeoutMs: 10_000 })
     expect(result.isError).toBe(false)
     expect(result.text).toBe('echo:echo:{"query":"hooks"}')
   })
 
-  it('runs the child in the session directory', async () => {
+  it('runs the server in the requested directory', async () => {
     const dir = scratch()
     const run = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    const result = await client.callTool('pwd', {}, { cwd: run, timeoutMs: 10_000 })
+    const result = await fixture(dir).callTool('pwd', {}, { cwd: run, timeoutMs: 10_000 })
     expect(result.text.toLowerCase()).toBe(run.toLowerCase())
+  })
+
+  it('lists the advertised tools', async () => {
+    const dir = scratch()
+    const tools = await fixture(dir).listTools({ cwd: dir, timeoutMs: 10_000 })
+    expect(tools.map(tool => tool.name)).toEqual(['echo', 'pwd'])
+    expect(tools[0]?.description).toBe('Echo arguments back')
   })
 
   it('maps a tool-level failure to MCP_TOOL_ERROR with the text kept', async () => {
     const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    await expect(client.callTool('fail', {}, { cwd: dir, timeoutMs: 10_000 }))
+    await expect(fixture(dir).callTool('fail', {}, { cwd: dir, timeoutMs: 10_000 }))
       .rejects.toMatchObject({ code: 'MCP_TOOL_ERROR', message: 'boom' })
   })
 
   it('maps a JSON-RPC error to MCP_ERROR', async () => {
     const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    await expect(client.callTool('rpc', {}, { cwd: dir, timeoutMs: 10_000 }))
+    await expect(fixture(dir).callTool('rpc', {}, { cwd: dir, timeoutMs: 10_000 }))
       .rejects.toMatchObject({ code: 'MCP_ERROR' })
   })
 
   it('refuses an empty answer', async () => {
     const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    await expect(client.callTool('empty', {}, { cwd: dir, timeoutMs: 10_000 }))
+    await expect(fixture(dir).callTool('empty', {}, { cwd: dir, timeoutMs: 10_000 }))
       .rejects.toMatchObject({ code: 'MCP_EMPTY' })
   })
 
   it('times out and kills a server that never answers', async () => {
     const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    await expect(client.callTool('slow', {}, { cwd: dir, timeoutMs: 250 }))
+    await expect(fixture(dir).callTool('slow', {}, { cwd: dir, timeoutMs: 250 }))
       .rejects.toMatchObject({ code: 'MCP_TIMEOUT' })
   }, 10_000)
 
-  it('reports a missing server instead of spawning nothing', async () => {
-    const dir = scratch()
-    const client = new McpClient(join(dir, 'nope.cjs'), { env: process.env, node: process.execPath })
-    await expect(client.callTool('echo', {}, { cwd: dir, timeoutMs: 10_000 }))
+  it('reports a server that cannot start', async () => {
+    const client = new McpClient({ command: 'definitely-not-a-real-mcp-binary' })
+    await expect(client.callTool('echo', {}, { timeoutMs: 5_000 }))
       .rejects.toMatchObject({ code: 'MCP_UNAVAILABLE' })
   })
 
-  it('rejects a call without a working directory', async () => {
-    const dir = scratch()
-    const client = new McpClient(fixtureServer(dir), { env: process.env, node: process.execPath })
-    await expect(client.callTool('echo', {}, { cwd: '  ', timeoutMs: 10_000 }))
+  it('rejects a call without a command', async () => {
+    const client = new McpClient({ command: '   ' })
+    await expect(client.callTool('echo', {}, { timeoutMs: 5_000 }))
       .rejects.toMatchObject({ code: 'MCP_INVALID_REQUEST' })
   })
-})
 
-describe.skipIf(process.env.DSH_MCP_LIVE !== '1')('live claude-mem server', () => {
-  it('lists corpora and outlines this module through the real server', async () => {
-    const script = locateMcpServer('')
-    expect(script).toBeDefined()
-    const client = new McpClient(script as string)
-    const cwd = process.cwd()
-
-    const corpora = await client.callTool('list_corpora', {}, { cwd, timeoutMs: 60_000 })
-    expect(corpora.text.length).toBeGreaterThan(0)
-    expect(corpora.isError).toBe(false)
-
-    const outline = await client.callTool('smart_outline', { file_path: 'src/mcp.ts' }, { cwd, timeoutMs: 120_000 })
-    expect(outline.text).toContain('mcp.ts')
-    expect(outline.text).toContain('locateMcpServer')
-  }, 180_000)
+  it('honours an already-aborted signal', async () => {
+    const dir = scratch()
+    const controller = new AbortController()
+    controller.abort()
+    await expect(fixture(dir).callTool('echo', {}, { cwd: dir, signal: controller.signal, timeoutMs: 5_000 }))
+      .rejects.toMatchObject({ code: 'MCP_ABORTED' })
+  })
 })
