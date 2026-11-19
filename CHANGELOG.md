@@ -2,6 +2,21 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.8.0
+
+### Added
+
+- Nine tools served by claude-mem's own MCP server. Structural reading: `mem_smart_search`, `mem_smart_outline`, `mem_smart_unfold` return symbols, outlines and single-symbol source instead of whole files. Knowledge corpora: `mem_corpus_list`, `mem_corpus_build`, `mem_corpus_prime`, `mem_corpus_query`, `mem_corpus_rebuild`, `mem_corpus_reprime`.
+- The server is not searched for. The worker is the single source of truth for an installation: its health payload names the script it runs from, and `mcp-server.cjs` ships beside it, so one path join replaces any cache or registry scanning.
+- A small MCP stdio client (`src/mcp.ts`) speaks the protocol and nothing else; where the server lives and which environment it needs are the adapter's decisions. One process per call, one deadline, typed failures.
+- Two switches, `smart` and `corpora` (both on), with a settings-page section of their own.
+
+### Notes
+
+- The smart tools are scoped to the session's working directory, following claude-mem's own rule; a path outside it is refused by the server.
+- A grammar is compiled the first time a language is used, which needs a C toolchain in the environment. When it is missing the tools answer with claude-mem's own diagnostic instead of failing — the same message a Claude Code user would see.
+- Tools are registered when the plugin loads, so flipping a switch takes effect after DSH restarts.
+
 ## 0.7.0
 
 ### Added

@@ -46,6 +46,8 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | File context | Attach what memory already knows about a file after a read-like tool call. Off by default: each new file costs one hook start (about 0.4 s). The watched tools are configurable (advanced). |
 | Refuse full reads | Optional, off by default: deny a full read of a 32 KB+ file memory already covers and point at `offset`/`limit` reads and `mem_search`. DSH already caps one read at about 50 KB, so the gain is small; a file named in the user's prompt always passes. |
 | Subagents | A delegated run’s tool calls are stored on the parent session and tagged with its agent id, and its end is archived. The subagent gets no memory context of its own: what it may know is the parent’s decision. |
+| Smart reading | Adds `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`, served by claude-mem's MCP server: symbol outlines and single-symbol source instead of whole files. Scoped to the session directory. A language's grammar is compiled on first use. |
+| Knowledge corpora | Adds the six `mem_corpus_*` tools: build a corpus from filtered observations, prime it, ask it questions, rebuild and reprime. Priming and querying start a model session inside the worker. |
 | Observed tools | Which tools the previous switch watches (advanced). |
 
 ## Roadmap
@@ -57,8 +59,8 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 - [x] **Work state** — `work_state_write` / `work_state_read`, plus a DSH stand-in for claude-mem's **auto-clear**: re-injecting unfinished items after DSH compacts the context (0.4.0).
 - [x] `dumb_search` — title-word lookup without reasoning: fast and shallow (0.5.0).
 - [x] `get_tool_uses` — fetch the original `tool_input` / `tool_response` for tool calls you already found by id (0.5.0).
-- [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter symbol search, file outline, and symbol expansion.
-- [ ] `corpora` — build, prime, query, rebuild, reprime, and list knowledge corpora.
+- [x] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter symbol search, file outline, and symbol expansion, reached through claude-mem's own MCP server (0.8.0). The search is scoped to the session directory, and a language's grammar is compiled the first time it is used.
+- [x] `corpora` — build, prime, query, rebuild, reprime, and list knowledge corpora through the same MCP server (0.8.0).
 
 #### Hooks
 

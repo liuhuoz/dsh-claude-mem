@@ -46,6 +46,8 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 | 文件上下文 | 读取类工具调用之后，附上记忆里已有的该文件信息。默认关闭：每个新文件都要起一次 hook（约 0.4 秒）。观察哪些工具可配置（高级）。 |
 | 拒绝完整读取 | 可选，默认关闭：当记忆已经覆盖某个 32 KB 以上的文件时，拒绝完整读取，并指向 `offset` / `limit` 分段读取与 `mem_search`。DSH 本身已把单次读取限制在约 50 KB，所以收益有限；用户在 prompt 里点名的文件一律放行。 |
 | 子代理 | 子代理里的工具调用记到父会话名下并标注 agent id，结束时归档一条。子代理本身不获得记忆上下文——它能看到什么由主会话或预设决定。 |
+| 结构化阅读 | 新增 `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`，由 claude-mem 的 MCP server 提供：给符号大纲与单个符号源码，而不是整篇文件。作用范围限于会话目录；每种语言的语法库首次使用时编译。 |
+| 知识语料库 | 新增六个 `mem_corpus_*` 工具：从筛选后的观察构建语料、prime、提问、重建、重新 prime。prime 与 query 会在 worker 内起模型会话。 |
 | 观察白名单 | 上一个开关作用于哪些工具（高级）。 |
 
 ## 路线图
@@ -57,8 +59,8 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 - [x] **Work state** — `work_state_write` / `work_state_read`，以及 claude-mem **auto-clear** 在 DSH 下的替代实现：上下文压缩后重新注入未完成项（0.4.0）。
 - [x] `dumb_search` — 不做推理的标题词匹配检索，快但浅（0.5.0）。
 - [x] `get_tool_uses` — 按 id 取回工具调用的原始 `tool_input` / `tool_response`（0.5.0）。
-- [ ] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter 符号搜索、文件结构大纲、符号展开。
-- [ ] `corpora` — 构建、prime、查询、重建、重新 prime、列出知识库。
+- [x] `smart_search` / `smart_outline` / `smart_unfold` — tree-sitter 符号搜索、文件结构大纲、符号展开，经 claude-mem 自己的 MCP server 提供（0.8.0）。检索范围限于会话目录，每种语言的语法库首次使用时编译。
+- [x] `corpora` — 构建、prime、查询、重建、重新 prime、列出知识库，走同一个 MCP 通道（0.8.0）。
 
 #### Hooks
 
