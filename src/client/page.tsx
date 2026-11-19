@@ -36,6 +36,8 @@ interface Draft {
   fileContext: boolean
   fileContextGate: boolean
   subagents: boolean
+  smart: boolean
+  corpora: boolean
   fileContextTools: string
   toolNames: string
 }
@@ -85,6 +87,8 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     fileContext: source.fileContext === true,
     fileContextGate: source.fileContextGate === true,
     subagents: source.subagents !== false,
+    smart: source.smart !== false,
+    corpora: source.corpora !== false,
     fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
   }
@@ -111,6 +115,8 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['fileContext'], value: draft.fileContext },
     { op: 'set', path: ['fileContextGate'], value: draft.fileContextGate },
     { op: 'set', path: ['subagents'], value: draft.subagents },
+    { op: 'set', path: ['smart'], value: draft.smart },
+    { op: 'set', path: ['corpora'], value: draft.corpora },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
   ]
 }
@@ -348,6 +354,26 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('subagents')}</span>
         </label>
         <span style={layout.hint}>{t('subagentsHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.smart}
+            disabled={!writable}
+            label={t('smart')}
+            onChange={next => update('smart', next)}
+          />
+          <span>{t('smart')}</span>
+        </label>
+        <span style={layout.hint}>{t('smartHint')}</span>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.corpora}
+            disabled={!writable}
+            label={t('corpora')}
+            onChange={next => update('corpora', next)}
+          />
+          <span>{t('corpora')}</span>
+        </label>
+        <span style={layout.hint}>{t('corporaHint')}</span>
       </section>
 
       <DisclosureRow
