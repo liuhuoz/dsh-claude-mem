@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import type {} from '@deepseek-ai/dsh-skill'
 import { WorkerClient } from './worker.js'
 import { applyMemoryTools } from './tools.js'
+import { applyMcpTools } from './mcp-tools.js'
 import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
@@ -81,6 +82,8 @@ export const Config = Schema.object({
   fileContext: Schema.boolean().default(false).volatile(),
   fileContextGate: Schema.boolean().default(false).volatile(),
   subagents: Schema.boolean().default(true).volatile(),
+  smart: Schema.boolean().default(true).volatile(),
+  corpora: Schema.boolean().default(true).volatile(),
   fileContextTools: Schema.array(Schema.string()).default(['read', 'ops_bash', 'pwsh', 'grep', 'glob']).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })
@@ -101,6 +104,11 @@ export function apply(ctx: Context, config: unknown): void {
   applyMemoryTools(ctx, worker, {
     timeoutMs: initial.timeoutMs,
     workState: initial.workState,
+  })
+  applyMcpTools(ctx, worker, {
+    smart: initial.smart,
+    corpora: initial.corpora,
+    timeoutMs: initial.timeoutMs,
   })
   applyMemoryHooks(ctx, worker, current)
   registerHealthBridge(ctx)

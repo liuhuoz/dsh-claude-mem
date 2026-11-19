@@ -24,6 +24,8 @@ export interface LiveSettings {
   readonly fileContextGate: boolean
   readonly fileContextTools: readonly string[]
   readonly subagents: boolean
+  readonly smart: boolean
+  readonly corpora: boolean
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
   readonly dedupe: boolean
@@ -42,6 +44,8 @@ const DEFAULTS = {
   fileContext: false,
   fileContextGate: false,
   subagents: true,
+  smart: true,
+  corpora: true,
   timeoutMs: 30_000,
   dedupe: true,
 } as const
@@ -113,6 +117,8 @@ export function resolveSettings(raw: unknown): LiveSettings {
     fileContextGate: readFlag(source.fileContextGate, DEFAULTS.fileContextGate),
     fileContextTools: readStringList(source.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS),
     subagents: readFlag(source.subagents, DEFAULTS.subagents),
+    smart: readFlag(source.smart, DEFAULTS.smart),
+    corpora: readFlag(source.corpora, DEFAULTS.corpora),
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),

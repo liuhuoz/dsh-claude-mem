@@ -26,6 +26,7 @@ describe('healthUrl', () => {
 describe('parseHealth', () => {
   it('keeps the reported fields and drops the rest', () => {
     const health = parseHealth(LIVE_HEALTH)
+    // workerPath is the installation the MCP server ships in, so it is kept.
     expect(health).toStrictEqual({
       status: 'ok',
       version: '15.17.0',
@@ -33,8 +34,8 @@ describe('parseHealth', () => {
       initialized: true,
       mcpReady: true,
       provider: 'claude',
+      workerPath: LIVE_HEALTH.workerPath,
     })
-    expect(health && 'workerPath' in health).toBe(false)
   })
 
   it('rejects a body that is not a health payload', () => {

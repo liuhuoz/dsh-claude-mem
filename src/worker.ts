@@ -6,6 +6,8 @@
  */
 
 import { MemError } from './types.js'
+import { parseHealth } from './probe.js'
+import type { WorkerHealth } from './probe.js'
 import type {
   MemContextRequest,
   MemDumbSearchRequest,
@@ -76,6 +78,17 @@ function timeoutOf(x: AbortSignal, code: string): TimeoutReason | undefined {
  */
 export class WorkerClient {
   constructor(private readonly limits: WorkerLimits) {}
+
+  /**
+   * The worker's own health payload. Besides reachability it names the script
+   * the worker runs from, which is the installation the MCP server lives in.
+   */
+  async health(signal?: AbortSignal): Promise<WorkerHealth> {
+    const raw: unknown = await this.requestJson<unknown>('/api/health', { method: 'GET' }, signal)
+    const health = parseHealth(raw)
+    if (health === undefined) throw new MemError('the worker answered an unexpected health payload', 'MEM_PROVIDER_ERROR')
+    return health
+  }
 
   async search(request: MemSearchRequest, signal?: AbortSignal): Promise<MemSearchResult> {
     const query = new URLSearchParams({ query: request.query })

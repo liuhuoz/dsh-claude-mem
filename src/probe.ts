@@ -15,6 +15,8 @@ export interface WorkerHealth {
   readonly initialized?: boolean
   readonly mcpReady?: boolean
   readonly provider?: string
+  /** Absolute path of the script the worker runs from; its install directory. */
+  readonly workerPath?: string
 }
 
 /** How a health reading should read in the settings page. */
@@ -62,6 +64,7 @@ export function parseHealth(payload: unknown): WorkerHealth | undefined {
     ...(typeof record.initialized === 'boolean' ? { initialized: record.initialized } : {}),
     ...(typeof record.mcpReady === 'boolean' ? { mcpReady: record.mcpReady } : {}),
     ...(ai !== undefined && typeof ai.provider === 'string' ? { provider: ai.provider } : {}),
+    ...(typeof record.workerPath === 'string' && record.workerPath.length > 0 ? { workerPath: record.workerPath } : {}),
   }
 }
 
