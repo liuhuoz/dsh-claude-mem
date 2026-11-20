@@ -3,7 +3,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { WorkerClient } from '../src/worker.ts'
 import type { LiveSettings } from '../src/settings.ts'
-import { rehydrateContext, WORK_STATE_MARKER } from '../src/hooks.ts'
+import { injectSessionContext } from '../src/hooks.ts'
 
 function settings(overrides: Partial<LiveSettings> = {}): LiveSettings {
   return {
@@ -34,10 +34,12 @@ function fakeAgent(cwd = 'C:/work'): { agent: Agent; inject: ReturnType<typeof v
   return { agent, inject }
 }
 
-function fakeWorker(context: string | (() => Promise<string>), state: string | (() => Promise<string>)): WorkerClient {
-  const call = (value: string | (() => Promise<string>)) =>
-    vi.fn(typeof value === 'string' ? async () => value : value)
-  return { context: call(context), workState: call(state) } as unknown as WorkerClient
+function fakeWorker(context: string | (() => Promise<string>)): WorkerClient {
+  const workState = vi.fn(async () => '- release\n  - [doing] ship')
+  return {
+    context: vi.fn(typeof context === 'string' ? async () => context : context),
+    workState,
+  } as unknown as WorkerClient
 }
 
 function injectedText(inject: ReturnType<typeof vi.fn>): string {
@@ -48,65 +50,51 @@ function injectedText(inject: ReturnType<typeof vi.fn>): string {
   return block.type === 'text' ? block.text : ''
 }
 
-describe('rehydrateContext', () => {
-  it('re-injects the session block and the open work state in one message', async () => {
+describe('injectSessionContext', () => {
+  it('injects the block the worker renders, unchanged and once', async () => {
     const { agent, inject } = fakeAgent()
-    const worker = fakeWorker('session context', '- release\n  - [doing] ship')
+    const block = 'Access Claude-Mem Rules + Tools: ~/.claude-mem/RULES-AND-TOOLS.md\n\nWork state, still open:\n- release\n  - [doing] ship'
+    const worker = fakeWorker(block)
 
-    await rehydrateContext(worker, agent, settings())
+    await injectSessionContext(worker, agent, settings())
 
-    expect(injectedText(inject)).toBe(`session context\n\n${WORK_STATE_MARKER}\n- release\n  - [doing] ship`)
+    expect(injectedText(inject)).toBe(block)
     expect(worker.context).toHaveBeenCalledTimes(1)
     expect(worker.context).toHaveBeenCalledWith({ projects: 'work' })
-    expect(worker.workState).toHaveBeenCalledTimes(1)
-    expect(worker.workState).toHaveBeenCalledWith({ cwd: 'C:/work' })
   })
 
-  it('injects the block alone when nothing is open', async () => {
-    const { agent, inject } = fakeAgent()
-    const worker = fakeWorker('session context', 'Nothing open for work.')
+  it('never fetches the work state separately: the block already carries it', async () => {
+    const { agent } = fakeAgent()
+    const worker = fakeWorker('block')
 
-    await rehydrateContext(worker, agent, settings())
+    await injectSessionContext(worker, agent, settings())
 
-    expect(injectedText(inject)).toBe('session context')
+    expect(worker.workState).not.toHaveBeenCalled()
   })
 
-  it('still injects the work state when the block is empty', async () => {
+  it('stays silent when the worker has no context', async () => {
     const { agent, inject } = fakeAgent()
-    const worker = fakeWorker('', '- release\n  - [doing] ship')
 
-    await rehydrateContext(worker, agent, settings())
-
-    expect(injectedText(inject)).toBe(`${WORK_STATE_MARKER}\n- release\n  - [doing] ship`)
-  })
-
-  it('stays silent when the worker has neither', async () => {
-    const { agent, inject } = fakeAgent()
-    const worker = fakeWorker('', 'Nothing recorded in "release" for work.')
-
-    await rehydrateContext(worker, agent, settings())
+    await injectSessionContext(fakeWorker(''), agent, settings())
 
     expect(inject).not.toHaveBeenCalled()
   })
 
-  it('injects the same text whatever the work-state switch says', async () => {
+  it('injects the same block whatever the work-state switch says', async () => {
     const enabled = fakeAgent()
-    await rehydrateContext(fakeWorker('session context', '- release\n  - [doing] ship'), enabled.agent, settings({ workState: true }))
+    await injectSessionContext(fakeWorker('block'), enabled.agent, settings({ workState: true }))
 
     const disabled = fakeAgent()
-    await rehydrateContext(fakeWorker('session context', '- release\n  - [doing] ship'), disabled.agent, settings({ workState: false }))
+    await injectSessionContext(fakeWorker('block'), disabled.agent, settings({ workState: false }))
 
     expect(injectedText(disabled.inject)).toBe(injectedText(enabled.inject))
   })
 
   it('never throws when the worker is unavailable', async () => {
     const { agent, inject } = fakeAgent()
-    const worker = fakeWorker(
-      async () => { throw new Error('ECONNREFUSED') },
-      async () => { throw new Error('ECONNREFUSED') },
-    )
+    const worker = fakeWorker(async () => { throw new Error('ECONNREFUSED') })
 
-    await expect(rehydrateContext(worker, agent, settings())).resolves.toBeUndefined()
+    await expect(injectSessionContext(worker, agent, settings())).resolves.toBeUndefined()
     expect(inject).not.toHaveBeenCalled()
   })
 })

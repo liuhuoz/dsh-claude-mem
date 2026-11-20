@@ -68,7 +68,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 - [x] **subagent-stop** — a delegated run’s tool calls are stored on the parent session, tagged with its agent id, and its end is archived through claude-mem’s own `SubagentStop` hook (0.7.0). Nothing is injected into the subagent: what it may know is the parent’s decision.
 - [x] ~~**session-end**~~ — decided against. DSH has no clean “session over” signal (`session/disposed` is storage teardown), claude-mem’s own DSH adapter treats `turn/end` as the end, and this plugin already summarises on `agent/turn-stopping`.
 - [x] **Failure observations** — a failed tool call is recorded like any other, on the same `PostToolUse` event: `tool_response` carries `{ is_error: true, error }`, the shape claude-mem's merged adapters already send, so this side needs no second hook event. The observer keeps its own noise filter — a single trivial failure is queued, not forced into an observation — and failures stay out of the per-file index the read gate consults (0.8.1).
-- [x] **Post-compaction context** — the compaction branch of `SessionStart`: a compaction keeps the summary but drops the block the session started with, so `compaction/end` re-injects `/api/context/inject` together with the project's open work state, once, in a single message (0.8.2).
+- [x] **Post-compaction context** — the compaction branch of `SessionStart`: a compaction keeps the summary but drops the block the session started with, so `compaction/end` re-injects `/api/context/inject`, one message, and that block already carries the project's open work state (0.8.2).
 
 ### Phase 2 — efficiency and control
 

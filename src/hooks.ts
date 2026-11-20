@@ -355,28 +355,8 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
     })
 }
 
-/** Attach the memory lifecycle hooks to their extension points. */
-/** Marker prefix of the work-state section appended to the post-compaction context. */
-export const WORK_STATE_MARKER = '[claude-mem] open work state'
-
 /** Marker prefix for the memory block attached after a read-like tool call. */
 export const FILE_CONTEXT_MARKER = '[claude-mem] file context'
-
-/**
- * True only when the worker returned actual open items. An empty project answers
- * "Nothing open for …" or "Nothing recorded …", which must not be injected.
- */
-export function hasOpenWorkState(text: string): boolean {
-  const body = text.trim()
-  if (body.length === 0) return false
-  return !/^Nothing (open|recorded)\b/.test(body)
-}
-
-/** The cwd the worker files this session under, and that work_state_read reads. */
-function sessionCwd(agent: Agent): string {
-  const cwd = agent.session.header.cwd
-  return typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd()
-}
 
 /**
  * Build one injected message. Session start and compaction both go through it so
@@ -399,29 +379,31 @@ function memoryMessage(text: string): UserMessage {
 }
 
 /**
- * claude-mem's auto-clear relies on Claude Code's `/clear`. DSH has no such
- * command — it compacts the session in place — and a compaction keeps the
- * summary but drops the block the session started with. Re-inject that block
- * plus the project's open work state, once, as soon as a compaction commits.
+ * Put the project's memory context into the conversation: the block claude-mem
+ * renders for a session start. That block already opens with the project's open
+ * work state ("Work state, still open: …") when there is one, so fetching the
+ * work state separately would inject the same list twice.
+ *
+ * Session start and every committed compaction call it — a compaction keeps the
+ * summary but drops the block the session started with, so a continued turn has
+ * to be given it again.
  */
-export async function rehydrateContext(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
+export async function injectSessionContext(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
   const project = projectName(agent, settings)
   try {
-    const [context, state] = await Promise.all([
-      worker.context({ projects: project, ...platform(settings) }),
-      worker.workState({ cwd: sessionCwd(agent) }),
-    ])
-    const parts: string[] = []
-    if (context.trim().length > 0) parts.push(context.trim())
-    if (hasOpenWorkState(state)) parts.push(`${WORK_STATE_MARKER}\n${state.trim()}`)
-    if (parts.length === 0) return
-    agent.inject(memoryMessage(parts.join('\n\n')))
+    // The session row is created by recordPrompt() carrying the real prompt
+    // text, so no placeholder "[media prompt]" row is written here.
+    const text = await worker.context({ projects: project, ...platform(settings) })
+    if (text.length === 0) return
+    agent.inject(memoryMessage(text))
   } catch {
-    // Best-effort: an unavailable worker must not break the continued turn.
+    // Best-effort: an unavailable worker must not block the first turn or the
+    // continued one. The worker being down surfaces through the mem_* tools.
     ensureWorkerStarted(settings)
   }
 }
 
+/** Attach the memory lifecycle hooks to their extension points. */
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings: SettingsSource): void {
   ensureWorkerStarted(getSettings())
 
@@ -455,7 +437,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
       rememberSubagent(agent, subagents)
       return
     }
-    void seedSessionContext(worker, agent, getSettings())
+    void injectSessionContext(worker, agent, getSettings())
   })
 
   on('agent/disposed', (payload: { agent?: Agent }) => {
@@ -512,13 +494,13 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   })
 
   // DSH compacts in place instead of clearing. The summary survives, the block
-  // the session started with does not, so re-inject it together with the open
-  // work state as soon as a compaction commits.
+  // the session started with does not, so re-inject that block — it already
+  // carries the open work state — as soon as a compaction commits.
   on('session/event', (session: { id: string }, event: { type: string }) => {
     if (event?.type !== 'compaction/end') return
     const agent = agents.get(session.id)
     if (agent === undefined || isSubagent(agent)) return
-    void rehydrateContext(worker, agent, getSettings())
+    void injectSessionContext(worker, agent, getSettings())
   })
 
   on('agent/pre-step', async (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
@@ -559,21 +541,6 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const settings = getSettings()
     if (settings.summarize) void summarizeSession(worker, payload.agent, settings)
   })
-}
-
-async function seedSessionContext(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
-  const project = projectName(agent, settings)
-  try {
-    // The session row is created by recordPrompt() carrying the real prompt
-    // text, so no placeholder "[media prompt]" row is written here.
-    const text = await worker.context({ projects: project, ...platform(settings) })
-    if (text.length === 0) return
-    agent.inject(memoryMessage(text))
-  } catch {
-    // Context seeding is best-effort: an unavailable worker must not block the
-    // first turn. The worker being down is reported by the mem_* tools instead.
-    ensureWorkerStarted(settings)
-  }
 }
 
 function observeToolResult(

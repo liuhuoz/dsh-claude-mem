@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { WorkerClient } from '../src/worker.ts'
-import { hasOpenWorkState, WORK_STATE_MARKER } from '../src/hooks.ts'
 
 const limits = { baseUrl: 'http://127.0.0.1:39999', timeoutMs: 30_000 }
 
@@ -36,22 +35,5 @@ describe('WorkerClient.workState', () => {
     const url = String(fetchMock.mock.calls[0]?.[0])
     expect(url).not.toContain('list=')
     expect(url).not.toContain('includeClosed')
-  })
-})
-
-describe('hasOpenWorkState', () => {
-  it('rejects the worker empty-state sentences', () => {
-    expect(hasOpenWorkState('')).toBe(false)
-    expect(hasOpenWorkState('  \n ')).toBe(false)
-    expect(hasOpenWorkState('Nothing open for dsh-claude-mem. Pass includeClosed to see closed items.')).toBe(false)
-    expect(hasOpenWorkState('Nothing recorded in "release" for dsh-claude-mem.')).toBe(false)
-  })
-
-  it('accepts a rendered list of open items', () => {
-    expect(hasOpenWorkState('- release\n  - [doing] ship')).toBe(true)
-  })
-
-  it('exposes a stable marker for the re-injection', () => {
-    expect(WORK_STATE_MARKER).toContain('claude-mem')
   })
 })
