@@ -52,7 +52,7 @@ describe('resolveSettings', () => {
     expect(settings.autoStartWorker).toBe(true)
     expect(settings.timeoutMs).toBe(30_000)
     expect(settings.dedupe).toBe(true)
-    expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork'])
+    expect(settings.toolFilter.names).toEqual(['read', 'write', 'edit', 'bash', 'ops_bash', 'pwsh', 'subagent', 'subagent_fork'])
   })
 
   it('defaults subagent observation on and unwraps its volatile cell', () => {
@@ -72,7 +72,7 @@ describe('resolveSettings', () => {
   })
 
   it('keeps the default tool list when the filter is empty or malformed', () => {
-    const defaults = ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']
+    const defaults = ['read', 'write', 'edit', 'bash', 'ops_bash', 'pwsh', 'subagent', 'subagent_fork']
     expect(resolveSettings({ toolFilter: { names: [] } }).toolFilter.names).toEqual(defaults)
     expect(resolveSettings({ toolFilter: { names: 'read' } }).toolFilter.names).toEqual(defaults)
     expect(resolveSettings({ toolFilter: null }).toolFilter.names).toEqual(defaults)

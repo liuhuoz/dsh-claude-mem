@@ -136,6 +136,46 @@ export function hookToolName(name: string): string {
 }
 
 /**
+ * Everything one tool result contributes to claude-mem's payload, in the shape
+ * Claude Code sends it.
+ */
+export interface ObservationFields {
+  readonly cwd: string
+  readonly toolName: string
+  readonly toolInput: unknown
+  readonly text: string
+  /** True when the call failed; only the response body changes, never the event. */
+  readonly failed: boolean
+}
+
+/**
+ * Build the hook payload for one observed tool result.
+ *
+ * The event stays `PostToolUse` for successes and failures alike: claude-mem's
+ * workers read the structured failure marker out of `tool_response`
+ * (`{ is_error: true, error }`), the same shape the harnesses that only expose
+ * one post-tool event send. A separate failure event is Claude Code's transport
+ * detail, not a requirement of the observation pipeline.
+ */
+export function observationPayload(fields: ObservationFields, attribution: ToolAttribution): Record<string, unknown> {
+  return {
+    session_id: attribution.sessionId,
+    transcript_path: '',
+    cwd: fields.cwd,
+    hook_event_name: 'PostToolUse',
+    tool_name: hookToolName(fields.toolName),
+    tool_input: fields.toolInput ?? {},
+    ...fields.failed
+      ? { tool_response: { is_error: true, error: fields.text } }
+      : { tool_response: { content: [{ type: 'text', text: fields.text }], is_error: false } },
+    // Subagent work is filed against the parent session and labelled, never as a
+    // session of its own: the parent is what the user reads.
+    ...attribution.agentId === undefined ? {} : { agent_id: attribution.agentId },
+    ...attribution.agentType === undefined ? {} : { agent_type: attribution.agentType },
+  }
+}
+
+/**
  * Feed one tool result through claude-mem's own observation pipeline. The hook
  * launcher runs the observer model, produces a semantic observation, and
  * attributes it to the real content session.
@@ -146,22 +186,11 @@ function recordToolUse(
   text: string,
   settings: LiveSettings,
   attribution: ToolAttribution,
+  failed: boolean,
 ): void {
   const header = agent.session.header
   const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
-  const payload = {
-    session_id: attribution.sessionId,
-    transcript_path: '',
-    cwd,
-    hook_event_name: 'PostToolUse',
-    tool_name: hookToolName(exec.name),
-    tool_input: exec.arguments ?? {},
-    tool_response: { content: [{ type: 'text', text }], is_error: false },
-    // Subagent work is filed against the parent session and labelled, never as a
-    // session of its own: the parent is what the user reads.
-    ...attribution.agentId === undefined ? {} : { agent_id: attribution.agentId },
-    ...attribution.agentType === undefined ? {} : { agent_type: attribution.agentType },
-  }
+  const payload = observationPayload({ cwd, toolName: exec.name, toolInput: exec.arguments, text, failed }, attribution)
   try {
     const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'observation'], {
       stdio: ['pipe', 'ignore', 'ignore'],
@@ -542,7 +571,6 @@ function observeToolResult(
   settings: LiveSettings,
   subagents: Map<string, SubagentIdentity>,
 ): void {
-  if (result.isError) return
   if (!settings.toolFilter.names.includes(exec.name)) return
   const agent = exec.agent
   if (agent === undefined) return
@@ -551,8 +579,11 @@ function observeToolResult(
   // own work nor a bare child session it never registered.
   if (delegated && !settings.subagents) return
   const text = resultContentText(result.content)
-  if (text.length === 0) return
-  recordToolUse(exec, agent, text, settings, attributionOf(agent, subagents))
+  // A failure is evidence of an attempt, so it is recorded like any other
+  // result; when the call produced no body of its own the error message is it.
+  const body = text.length > 0 ? text : result.isError ? result.error.message.trim() : ''
+  if (body.length === 0) return
+  recordToolUse(exec, agent, body, settings, attributionOf(agent, subagents), result.isError)
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {

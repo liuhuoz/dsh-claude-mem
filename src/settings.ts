@@ -50,7 +50,7 @@ const DEFAULTS = {
   dedupe: true,
 } as const
 
-const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']
+const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'ops_bash', 'pwsh', 'subagent', 'subagent_fork']
 
 /** Tools that get file context when the switch is on; mirrors the schema default. */
 const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'ops_bash', 'pwsh', 'grep', 'glob']
