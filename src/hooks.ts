@@ -356,7 +356,7 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
 }
 
 /** Attach the memory lifecycle hooks to their extension points. */
-/** Marker prefix for the post-compaction work-state re-injection. */
+/** Marker prefix of the work-state section appended to the post-compaction context. */
 export const WORK_STATE_MARKER = '[claude-mem] open work state'
 
 /** Marker prefix for the memory block attached after a read-like tool call. */
@@ -372,25 +372,49 @@ export function hasOpenWorkState(text: string): boolean {
   return !/^Nothing (open|recorded)\b/.test(body)
 }
 
+/** The cwd the worker files this session under, and that work_state_read reads. */
+function sessionCwd(agent: Agent): string {
+  const cwd = agent.session.header.cwd
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd()
+}
+
+/**
+ * Build one injected message. Session start and compaction both go through it so
+ * the two paths cannot drift apart.
+ */
+function memoryMessage(text: string, settings: LiveSettings): UserMessage {
+  // DSH 0.2.x rejects the retired `{ kind: 'plugin', ... }` wrapper and has no
+  // catch-all producer kind; a plugin declares its own through MessageSourceMap,
+  // which this package cannot augment against the published harness types, so
+  // the producer kind is asserted here. The runtime accepts any non-empty kind
+  // other than 'plugin'.
+  return createUserMessage({
+    content: [{ type: 'text', text: applyWorkStatePolicy(text, settings.workState) }],
+    source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
+  })
+}
+
 /**
  * claude-mem's auto-clear relies on Claude Code's `/clear`. DSH has no such
- * command — it compacts the session in place — so the stand-in is to re-inject
- * the project's open work state as soon as a compaction commits.
+ * command — it compacts the session in place — and a compaction keeps the
+ * summary but drops the block the session started with. Re-inject that block
+ * plus the project's open work state, once, as soon as a compaction commits.
  */
-async function rehydrateWorkState(worker: WorkerClient, agent: Agent): Promise<void> {
-  const cwd = typeof agent.session.header.cwd === 'string' && agent.session.header.cwd.length > 0
-    ? agent.session.header.cwd
-    : process.cwd()
+export async function rehydrateContext(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
+  const project = projectName(agent, settings)
   try {
-    const text = await worker.workState({ cwd })
-    if (!hasOpenWorkState(text)) return
-    const message: UserMessage = createUserMessage({
-      content: [{ type: 'text', text: `${WORK_STATE_MARKER}\n${text.trim()}` }],
-      source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
-    })
-    agent.inject(message)
+    const [context, state] = await Promise.all([
+      worker.context({ projects: project, ...platform(settings) }),
+      worker.workState({ cwd: sessionCwd(agent) }),
+    ])
+    const parts: string[] = []
+    if (context.trim().length > 0) parts.push(context.trim())
+    if (hasOpenWorkState(state)) parts.push(`${WORK_STATE_MARKER}\n${state.trim()}`)
+    if (parts.length === 0) return
+    agent.inject(memoryMessage(parts.join('\n\n'), settings))
   } catch {
     // Best-effort: an unavailable worker must not break the continued turn.
+    ensureWorkerStarted(settings)
   }
 }
 
@@ -491,14 +515,14 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     })
   })
 
-  // DSH compacts in place instead of clearing; rehydrate the open work state once
-  // the compaction commits so the continued session still sees unfinished todos.
+  // DSH compacts in place instead of clearing. The summary survives, the block
+  // the session started with does not, so re-inject it together with the open
+  // work state as soon as a compaction commits.
   on('session/event', (session: { id: string }, event: { type: string }) => {
     if (event?.type !== 'compaction/end') return
     const agent = agents.get(session.id)
     if (agent === undefined || isSubagent(agent)) return
-    if (!getSettings().workState) return
-    void rehydrateWorkState(worker, agent)
+    void rehydrateContext(worker, agent, getSettings())
   })
 
   on('agent/pre-step', async (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
@@ -548,16 +572,7 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, settings: 
     // text, so no placeholder "[media prompt]" row is written here.
     const text = await worker.context({ projects: project, ...platform(settings) })
     if (text.length === 0) return
-    // DSH 0.2.x rejects the retired `{ kind: 'plugin', ... }` wrapper and has no
-    // catch-all producer kind; a plugin declares its own through MessageSourceMap,
-    // which this package cannot augment against the published harness types, so
-    // the producer kind is asserted here. The runtime accepts any non-empty kind
-    // other than 'plugin'.
-    const message: UserMessage = createUserMessage({
-      content: [{ type: 'text', text: applyWorkStatePolicy(text, settings.workState) }],
-      source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
-    })
-    agent.inject(message)
+    agent.inject(memoryMessage(text, settings))
   } catch {
     // Context seeding is best-effort: an unavailable worker must not block the
     // first turn. The worker being down is reported by the mem_* tools instead.
