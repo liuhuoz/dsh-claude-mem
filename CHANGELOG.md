@@ -2,6 +2,20 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.8.1
+
+### Fixed
+
+- Failed tool calls are recorded instead of dropped. The plugin had always sent `PostToolUse` with `is_error: false` and returned early on `result.isError`, so memory held only successful work. A failure now carries the same structured marker claude-mem's other harness adapters send — `tool_response: { is_error: true, error }` on the unchanged `PostToolUse` event — so no second hook event is needed here.
+- The default observed-tool list now includes `ops_bash` and `pwsh`. The inherited Claude Code names (`bash`) never matched this host's shell tools, so shell calls sat outside the observation path unless configured by hand.
+
+### Notes
+
+- A failure that carries no body of its own falls back to the tool's error message as the observation text.
+- Single trivial failures still get claude-mem's own `<skip_summary reason="noise" />`: they are queued, not forced into an observation.
+- Failed reads and edits stay out of the per-file observation index that `fileContextGate` queries, so the gate is unaffected.
+- The change lives in the hooks, which load at plugin start: restart DSH to pick it up.
+
 ## 0.8.0
 
 ### Added

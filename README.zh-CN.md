@@ -67,7 +67,7 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 - [x] **file-context** — 在 `read`（以及可选的 `ops_bash` / `pwsh` / `grep` / `glob`）之后，附上记忆里与该文件相关的观察。DSH 的 `tools/pre-execute` 没有注入槽，所以注入走 `agent/pre-step`；路径提取、新鲜度门控、按会话去重仍交给 claude-mem 自己的 hook。另有一个默认关闭的开关，可以在读取被记忆覆盖的大文件时拦截并给出指引，用户在 prompt 里点名该文件时放行（0.6.0）。
 - [x] **subagent-stop** — 子代理里的工具调用记到父会话名下并标注 agent id，结束时通过 claude-mem 自己的 `SubagentStop` hook 归档一条（0.7.0）。不对子代理注入任何记忆：它能看到什么由主会话或预设决定。
 - [x] ~~**session-end**~~ — 决定不做。DSH 没有干净的「会话结束」信号（`session/disposed` 是存储层 teardown），claude-mem 自己的 DSH 适配层把 `turn/end` 当作结束，而本插件已经在 `agent/turn-stopping` 上做摘要。
-- [ ] **失败观察** — claude-mem 通过 `PostToolUseFailure`（`is_error: true`）记录失败的工具调用；插件的载荷恒为 `PostToolUse` + `is_error: false`，带 `isError` 的结果根本不会送到 hook，失败的工具调用因此从不入库。
+- [x] **失败观察** — 失败的工具调用和成功的一样入库，事件仍是 `PostToolUse`：`tool_response` 带 `{ is_error: true, error }`，与其他 harness 已采用的归一化写法一致，本侧不需要第二个 hook 事件。观察器自己的噪声过滤不变——单条琐碎失败只入队、不强制生成观测；失败也不会进入读闸查询的文件索引（0.8.1）。
 - [ ] **压缩后上下文** — `SessionStart` 的 compaction 分支：会话从压缩中继续时，claude-mem 会重新注入会话起始上下文；插件目前只重新注入未完成待办。
 
 ### Phase 2 — 效率与控制
