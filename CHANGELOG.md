@@ -2,6 +2,18 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.8.2
+
+### Changed
+
+- A compaction now re-injects the block a session starts with, not just the open work state. DSH compacts in place: the summary survives, but the memory context that entered the conversation at session start does not. On `compaction/end` the plugin asks the worker for `/api/context/inject` and the project's open work state and injects both in one message, so the continued turn starts with the timeline it began with. Session start and compaction share one message builder, so the two paths cannot drift apart.
+- The `workState` switch is down to what it names: the write permission. Off now only keeps `work_state_write` / `work_state_read` unregistered; the injected context is exactly the same either way, and a compaction always re-injects. The "work state is disabled" notice is gone with it: it existed to paper over injecting state the model could not update.
+
+### Notes
+
+- Compaction no longer depends on `workState`. Turning the switch off used to suppress the post-compaction re-injection entirely.
+- Cost: one extra block per compaction, the same block a session already starts with (7-10 KB of timeline in this project's context cache).
+
 ## 0.8.1
 
 ### Fixed
