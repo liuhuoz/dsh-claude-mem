@@ -89,6 +89,16 @@ describe('rehydrateContext', () => {
     expect(inject).not.toHaveBeenCalled()
   })
 
+  it('injects the same text whatever the work-state switch says', async () => {
+    const enabled = fakeAgent()
+    await rehydrateContext(fakeWorker('session context', '- release\n  - [doing] ship'), enabled.agent, settings({ workState: true }))
+
+    const disabled = fakeAgent()
+    await rehydrateContext(fakeWorker('session context', '- release\n  - [doing] ship'), disabled.agent, settings({ workState: false }))
+
+    expect(injectedText(disabled.inject)).toBe(injectedText(enabled.inject))
+  })
+
   it('never throws when the worker is unavailable', async () => {
     const { agent, inject } = fakeAgent()
     const worker = fakeWorker(

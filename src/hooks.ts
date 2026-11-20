@@ -381,15 +381,19 @@ function sessionCwd(agent: Agent): string {
 /**
  * Build one injected message. Session start and compaction both go through it so
  * the two paths cannot drift apart.
+ *
+ * The text never depends on a setting: `workState` decides whether the two
+ * work_state tools are registered (the write permission), not what the model is
+ * told about the project.
  */
-function memoryMessage(text: string, settings: LiveSettings): UserMessage {
+function memoryMessage(text: string): UserMessage {
   // DSH 0.2.x rejects the retired `{ kind: 'plugin', ... }` wrapper and has no
   // catch-all producer kind; a plugin declares its own through MessageSourceMap,
   // which this package cannot augment against the published harness types, so
   // the producer kind is asserted here. The runtime accepts any non-empty kind
   // other than 'plugin'.
   return createUserMessage({
-    content: [{ type: 'text', text: applyWorkStatePolicy(text, settings.workState) }],
+    content: [{ type: 'text', text }],
     source: { kind: 'claude-mem' } as unknown as UserMessage['source'],
   })
 }
@@ -411,19 +415,11 @@ export async function rehydrateContext(worker: WorkerClient, agent: Agent, setti
     if (context.trim().length > 0) parts.push(context.trim())
     if (hasOpenWorkState(state)) parts.push(`${WORK_STATE_MARKER}\n${state.trim()}`)
     if (parts.length === 0) return
-    agent.inject(memoryMessage(parts.join('\n\n'), settings))
+    agent.inject(memoryMessage(parts.join('\n\n')))
   } catch {
     // Best-effort: an unavailable worker must not break the continued turn.
     ensureWorkerStarted(settings)
   }
-}
-
-/** Injected when the work-state switch is off, so the model never calls unregistered tools. */
-export const WORK_STATE_DISABLED_NOTE = 'claude-mem work state is disabled in this project: do not call work_state_write or work_state_read. Track short-lived progress with the harness todo tool instead.'
-
-/** Append the disabled notice to the injected context when work state is switched off. */
-export function applyWorkStatePolicy(text: string, enabled: boolean): string {
-  return enabled ? text : `${text}\n\n${WORK_STATE_DISABLED_NOTE}`
 }
 
 export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings: SettingsSource): void {
@@ -572,7 +568,7 @@ async function seedSessionContext(worker: WorkerClient, agent: Agent, settings: 
     // text, so no placeholder "[media prompt]" row is written here.
     const text = await worker.context({ projects: project, ...platform(settings) })
     if (text.length === 0) return
-    agent.inject(memoryMessage(text, settings))
+    agent.inject(memoryMessage(text))
   } catch {
     // Context seeding is best-effort: an unavailable worker must not block the
     // first turn. The worker being down is reported by the mem_* tools instead.

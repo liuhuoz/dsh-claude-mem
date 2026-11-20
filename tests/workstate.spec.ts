@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { WorkerClient } from '../src/worker.ts'
-import { applyWorkStatePolicy, hasOpenWorkState, WORK_STATE_DISABLED_NOTE, WORK_STATE_MARKER } from '../src/hooks.ts'
+import { hasOpenWorkState, WORK_STATE_MARKER } from '../src/hooks.ts'
 
 const limits = { baseUrl: 'http://127.0.0.1:39999', timeoutMs: 30_000 }
 
@@ -36,18 +36,6 @@ describe('WorkerClient.workState', () => {
     const url = String(fetchMock.mock.calls[0]?.[0])
     expect(url).not.toContain('list=')
     expect(url).not.toContain('includeClosed')
-  })
-})
-
-describe('applyWorkStatePolicy', () => {
-  it('leaves the injected context untouched while work state is enabled', () => {
-    expect(applyWorkStatePolicy('ctx', true)).toBe('ctx')
-  })
-
-  it('appends the disabled notice so the model does not call missing tools', () => {
-    const text = applyWorkStatePolicy('ctx', false)
-    expect(text.startsWith('ctx')).toBe(true)
-    expect(text).toContain(WORK_STATE_DISABLED_NOTE)
   })
 })
 
