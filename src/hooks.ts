@@ -378,6 +378,62 @@ function memoryMessage(text: string): UserMessage {
   })
 }
 
+/** One accepted injection whose message has not reached the transcript yet. */
+export interface PendingInjection {
+  readonly id: string
+  readonly at: number
+}
+
+/**
+ * Upper bound for an accepted injection that never reports delivery. Delivery is
+ * normally what ends the state — the `user/message` carrying the same id — so this
+ * only resets an entry whose event never arrived.
+ */
+export const PENDING_INJECTION_LEAK_MS = 30 * 60_000
+
+/**
+ * True while this session already has the block in flight: the first trigger wins
+ * and later ones step aside, whichever event fired them.
+ */
+export function injectionPending(pending: Map<string, PendingInjection>, sessionId: string, now = Date.now()): boolean {
+  const entry = pending.get(sessionId)
+  if (entry === undefined) return false
+  if (now - entry.at >= PENDING_INJECTION_LEAK_MS) {
+    pending.delete(sessionId)
+    return false
+  }
+  return true
+}
+
+/** Record an injection the harness accepted but has not delivered yet. */
+export function rememberInjection(pending: Map<string, PendingInjection>, sessionId: string, id: string, now = Date.now()): void {
+  pending.set(sessionId, { id, at: now })
+}
+
+/** End the in-flight state once its message reaches the transcript. */
+export function settleInjection(
+  pending: Map<string, PendingInjection>,
+  sessionId: string,
+  event: { type?: string; data?: { id?: unknown } },
+): boolean {
+  if (event?.type !== 'user/message') return false
+  const entry = pending.get(sessionId)
+  if (entry === undefined || event.data?.id !== entry.id) return false
+  pending.delete(sessionId)
+  return true
+}
+
+/** Best-effort debug logging: a logger problem must never change behaviour. */
+function debugLogger(ctx: Context): (message: string) => void {
+  return (message: string) => {
+    try {
+      (ctx.logger as unknown as { debug?: (input: string) => void })?.debug?.(`[claude-mem] ${message}`)
+    } catch {
+      // Ignored on purpose: logging must never break an injection decision.
+    }
+  }
+}
+
 /**
  * Put the project's memory context into the conversation: the block claude-mem
  * renders for a session start. That block already opens with the project's open
@@ -388,14 +444,30 @@ function memoryMessage(text: string): UserMessage {
  * summary but drops the block the session started with, so a continued turn has
  * to be given it again.
  */
-export async function injectSessionContext(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
+export async function injectSessionContext(
+  worker: WorkerClient,
+  agent: Agent,
+  settings: LiveSettings,
+  pending: Map<string, PendingInjection>,
+  debug: (message: string) => void = () => {},
+): Promise<void> {
+  const sessionId = agent.session.id
+  // One in-flight copy per session: the trigger that got there first wins, and a
+  // later one — compaction or session start, whoever fired it — steps aside,
+  // because the queued copy is still going to be delivered.
+  if (injectionPending(pending, sessionId)) {
+    debug(`context injection skipped: ${pending.get(sessionId)?.id ?? 'unknown'} is still in flight`)
+    return
+  }
   const project = projectName(agent, settings)
   try {
     // The session row is created by recordPrompt() carrying the real prompt
     // text, so no placeholder "[media prompt]" row is written here.
     const text = await worker.context({ projects: project, ...platform(settings) })
     if (text.length === 0) return
-    agent.inject(memoryMessage(text))
+    const message = memoryMessage(text)
+    agent.inject(message)
+    rememberInjection(pending, sessionId, message.id)
   } catch {
     // Best-effort: an unavailable worker must not block the first turn or the
     // continued one. The worker being down surfaces through the mem_* tools.
@@ -428,6 +500,11 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   /** The last prompt the user actually typed: an explicit request bypasses the read gate. */
   const lastPrompt = new Map<string, string>()
 
+  /** Context injections accepted by the harness but not yet delivered, one per session. */
+  const pendingInjections = new Map<string, PendingInjection>()
+
+  const debug = debugLogger(ctx)
+
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     agents.set(agent.session.id, agent)
@@ -437,7 +514,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
       rememberSubagent(agent, subagents)
       return
     }
-    void injectSessionContext(worker, agent, getSettings())
+    void injectSessionContext(worker, agent, getSettings(), pendingInjections, debug)
   })
 
   on('agent/disposed', (payload: { agent?: Agent }) => {
@@ -445,6 +522,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const { agent } = payload
     agents.delete(agent.session.id)
     lastPrompt.delete(agent.session.id)
+    pendingInjections.delete(agent.session.id)
     const identity = subagents.get(agent.session.id)
     if (identity === undefined) return
     subagents.delete(agent.session.id)
@@ -493,14 +571,17 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     })
   })
 
-  // DSH compacts in place instead of clearing. The summary survives, the block
-  // the session started with does not, so re-inject that block — it already
-  // carries the open work state — as soon as a compaction commits.
-  on('session/event', (session: { id: string }, event: { type: string }) => {
+  // The delivery event ends the in-flight state: the message we injected
+  // reappears in the transcript carrying the same id.
+  on('session/event', (session: { id: string }, event: { type: string; data?: { id?: unknown } }) => {
+    if (settleInjection(pendingInjections, session.id, event)) return
+    // DSH compacts in place instead of clearing. The summary survives, the block
+    // the session started with does not, so re-inject that block — it already
+    // carries the open work state — as soon as a compaction commits.
     if (event?.type !== 'compaction/end') return
     const agent = agents.get(session.id)
     if (agent === undefined || isSubagent(agent)) return
-    void injectSessionContext(worker, agent, getSettings())
+    void injectSessionContext(worker, agent, getSettings(), pendingInjections, debug)
   })
 
   on('agent/pre-step', async (payload: { agent: Agent; messages: readonly UserMessage[] }, next: () => Promise<unknown>) => {
