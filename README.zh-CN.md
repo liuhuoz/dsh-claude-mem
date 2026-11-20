@@ -68,7 +68,7 @@ pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败
 - [x] **subagent-stop** — 子代理里的工具调用记到父会话名下并标注 agent id，结束时通过 claude-mem 自己的 `SubagentStop` hook 归档一条（0.7.0）。不对子代理注入任何记忆：它能看到什么由主会话或预设决定。
 - [x] ~~**session-end**~~ — 决定不做。DSH 没有干净的「会话结束」信号（`session/disposed` 是存储层 teardown），claude-mem 自己的 DSH 适配层把 `turn/end` 当作结束，而本插件已经在 `agent/turn-stopping` 上做摘要。
 - [x] **失败观察** — 失败的工具调用和成功的一样入库，事件仍是 `PostToolUse`：`tool_response` 带 `{ is_error: true, error }`，与其他 harness 已采用的归一化写法一致，本侧不需要第二个 hook 事件。观察器自己的噪声过滤不变——单条琐碎失败只入队、不强制生成观测；失败也不会进入读闸查询的文件索引（0.8.1）。
-- [x] **压缩后上下文** — `SessionStart` 的 compaction 分支：压缩保留摘要、丢掉会话起始时的上下文块，所以 `compaction/end` 会把 `/api/context/inject` 重新注入一遍（一条消息，块内本就带未完成待办，不另取）（0.8.2）。
+- [x] **压缩后上下文** — `SessionStart` 的 compaction 分支：压缩保留摘要、丢掉会话起始时的上下文块，所以 `compaction/end` 会把 `/api/context/inject` 重新注入一遍（一条消息，块内本就带未完成待办，不另取）；同一会话同时只有一份在途，前一份尚未投递时新的触发会让位（0.8.3）。
 
 ### Phase 2 — 效率与控制
 

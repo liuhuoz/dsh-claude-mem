@@ -2,6 +2,13 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 0.8.3
+
+### Fixed
+
+- The context block is injected once per session. Session start and compaction can fire before the first block is delivered — restart, then compact without an intervening turn — and a queued block survives a compaction, so the second injection repeated the same ~10 KB block in the next step. A per-session pending entry now records the message id the harness accepted: the message reappearing in the transcript with that id ends it, a later trigger steps aside and logs the skip, and a 30 minute bound covers a delivery that never reports back.
+- The open work state no longer appears twice. `/api/context/inject` already opens the block with it, so the extra `/api/work-state` fetch and its appended section are gone.
+
 ## 0.8.2
 
 ### Changed
