@@ -9,10 +9,11 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Button, DisclosureRow, Input, StateDot, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, DisclosureRow, Input, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { HEALTH_BRIDGE_PATH, parseHealth, readHealth } from '../probe.js'
+import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES } from '../settings.js'
 import type { MessageKey } from './messages.js'
 
 /** Translation seat this page renders with. */
@@ -119,6 +120,11 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['corpora'], value: draft.corpora },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
   ]
+}
+
+function effectiveNames(value: string, fallback: readonly string[]): string {
+  const names = value.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
+  return (names.length > 0 ? names : fallback).join(', ')
 }
 
 function healthText(t: Translate, probe: Extract<Probe, { kind: 'done' | 'warning' }>): string {
@@ -390,22 +396,18 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
             disabled={!writable}
             onChange={event => update('toolNames', event.target.value)}
           />
-          <span style={{ opacity: 0.7 }}>{t('toolFilterHint')}</span>
+          <span style={{ opacity: 0.7 }}>{t('toolFilterHint', { names: DEFAULT_TOOL_NAMES.join(', ') })}</span>
+          <div style={{ opacity: 0.7 }}>{t('effectiveList', { names: effectiveNames(draft.toolNames, DEFAULT_TOOL_NAMES) })}</div>
         </label>
-        <div style={layout.actions}>
-          {draft.toolNames.split(/[,\s]+/).filter(name => name.length > 0).map(name => (
-            <Tag key={name}>{name}</Tag>
-          ))}
-        </div>
         <label>
           <span style={layout.label}>{t('fileContextTools')}</span>
           <Input
             value={draft.fileContextTools}
-            placeholder="read, ops_bash, pwsh, grep, glob"
             disabled={!writable}
             onChange={event => update('fileContextTools', event.target.value)}
           />
-          <span style={{ opacity: 0.7 }}>{t('fileContextToolsHint')}</span>
+          <span style={{ opacity: 0.7 }}>{t('fileContextToolsHint', { names: DEFAULT_FILE_CONTEXT_TOOLS.join(', ') })}</span>
+          <div style={{ opacity: 0.7 }}>{t('effectiveList', { names: effectiveNames(draft.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS) })}</div>
         </label>
       </DisclosureRow>
 
