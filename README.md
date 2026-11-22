@@ -21,20 +21,24 @@
 
 ## 安装
 
+按你实际在用的 profile 装（DSH 自带 `desktop` 与 `web` 两个）：
+
 ```sh
-dsh plugin --profile <profile> add @liuhuoz/dsh-claude-mem
+dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
+# 网页端用：
+dsh plugin --profile web add @liuhuoz/dsh-claude-mem
 ```
 
 同一个包也可以直接从仓库安装，跟随 `main`：
 
 ```sh
-dsh plugin --profile <profile> add github:liuhuoz/dsh-claude-mem
+dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 ```
 
 `dsh` 不在 `PATH` 上时：
 
 ```sh
-npx -y @deepseek-ai/dsh plugin --profile <profile> add @liuhuoz/dsh-claude-mem
+npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
 
 从 GitHub 安装的形式跟随 `main`；pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败并给出包名，把它加进 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds`，再执行一次。装完重启 DSH。

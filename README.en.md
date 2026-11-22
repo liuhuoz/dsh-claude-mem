@@ -21,20 +21,24 @@ English · [中文](README.md)
 
 ## Install
 
+Install into the profile you actually run (DSH ships `desktop` and `web`):
+
 ```sh
-dsh plugin --profile <profile> add @liuhuoz/dsh-claude-mem
+dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
+# for the web app:
+dsh plugin --profile web add @liuhuoz/dsh-claude-mem
 ```
 
 The same package can be installed straight from the repository, which tracks `main`:
 
 ```sh
-dsh plugin --profile <profile> add github:liuhuoz/dsh-claude-mem
+dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 ```
 
 If `dsh` is not on `PATH`:
 
 ```sh
-npx -y @deepseek-ai/dsh plugin --profile <profile> add @liuhuoz/dsh-claude-mem
+npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
 
 A GitHub install follows `main`, and pnpm will not run a git dependency's build script until it is allowed: the first `add` fails and names the package — put it under `allowBuilds` in the profile's `pnpm-workspace.yaml`, then run the command again. Restart DSH afterwards.
