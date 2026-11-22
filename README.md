@@ -41,8 +41,6 @@ dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
 
-从 GitHub 安装的形式跟随 `main`；pnpm 默认不允许执行 git 依赖的构建脚本：第一次 `add` 会失败并给出包名，把它加进 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds`，再执行一次。装完重启 DSH。
-
 ## 设置
 
 全部在插件自己的页面里：**插件 → dsh-claude-mem → 配置**。

@@ -41,8 +41,6 @@ If `dsh` is not on `PATH`:
 npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
 
-A GitHub install follows `main`, and pnpm will not run a git dependency's build script until it is allowed: the first `add` fails and names the package — put it under `allowBuilds` in the profile's `pnpm-workspace.yaml`, then run the command again. Restart DSH afterwards.
-
 ## Settings
 
 Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Configure**.

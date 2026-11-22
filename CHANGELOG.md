@@ -2,6 +2,17 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 1.0.1
+
+### Changed
+
+- LICENSE carries the complete Apache-2.0 text, with copyright lines for Bleed00 and liuhuoz. It held only the short notice before, which made GitHub report "Other" while package.json declared Apache-2.0.
+- The install steps drop the pnpm allowBuilds paragraph.
+
+### Notes
+
+- No code change. The release exists so a published tarball can carry the license and the trimmed README.
+
 ## 1.0.0
 
 ### Changed
