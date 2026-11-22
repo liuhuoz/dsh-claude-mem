@@ -2,6 +2,21 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 1.0.0
+
+### Changed
+
+- Phase 1 is closed. The surface this fork set out to match — the MCP tools, the hook coverage and the context injection — is complete, and 1.0.0 is the release that says so. It landed across 0.4.0–0.8.3: work state and its post-compaction stand-in, `dumb_search`, `get_tool_uses`, `file-context` and the read gate, `subagent-stop`, failure observations, post-compaction context, the `smart_*` and `corpus_*` tools, and one in-flight context injection per session.
+- Tool defaults now live in one place. The config schema kept its own copies of both lists, so what the plugin used could drift from what the settings page and the docs described; the schema now derives from `settings.ts`. The observed-tool default gains `pwsh`, which 0.8.1 documented but the schema never applied.
+- `ops_bash` leaves both default lists. It arrives with the dsh-ops tools rather than with the platform, so observing it, and attaching file context after it, is now an explicit opt-in; `bash` joins the file-context default in its place.
+- The settings page describes what each switch does, instead of referring to subsystems the page never introduces (injected context, the launcher, an observer model, grammar compilation). Both tool-list fields show the current selection as a line of text instead of a row of tag pills.
+- Published to npm as `@liuhuoz/dsh-claude-mem`; the package description is Chinese, and the README installs from the registry first while keeping the GitHub source as the alternative.
+- README.md is now Chinese, the English copy moved to README.en.md, and the roadmap chapter moved to ROADMAP.md.
+
+### Notes
+
+- Behaviour is unchanged from 0.8.3 apart from the two default-list corrections above. This is a naming release: Phase 1 is done, so the version stops pretending otherwise.
+
 ## 0.8.3
 
 ### Fixed
