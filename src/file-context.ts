@@ -10,9 +10,6 @@
 
 import { spawn } from 'node:child_process'
 
-/** Tools whose results are turned into file context by default. */
-export const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'ops_bash', 'pwsh', 'grep', 'glob']
-
 /** Upper bound for one injected block; a single file can render tens of kilobytes. */
 export const FILE_CONTEXT_LIMIT = 4000
 

@@ -22,7 +22,7 @@ import { applyMcpTools } from './mcp-tools.js'
 import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
-import { resolveSettings, type LiveSettings } from './settings.js'
+import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES, resolveSettings, type LiveSettings } from './settings.js'
 import { registerHealthBridge } from './bridge.js'
 
 export const name = 'dsh-claude-mem'
@@ -75,8 +75,8 @@ export const Config = Schema.object({
   ingest: Schema.boolean().default(true).volatile(),
   summarize: Schema.boolean().default(true).volatile(),
   toolFilter: Schema.object({
-    names: Schema.array(Schema.string()).default(['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork']),
-  }).default({ names: ['read', 'write', 'edit', 'bash', 'subagent', 'subagent_fork'] }).volatile(),
+    names: Schema.array(Schema.string()).default([...DEFAULT_TOOL_NAMES]),
+  }).default({ names: [...DEFAULT_TOOL_NAMES] }).volatile(),
   hookPath: Schema.string().default('').volatile(),
   workState: Schema.boolean().default(true).volatile(),
   fileContext: Schema.boolean().default(false).volatile(),
@@ -84,7 +84,7 @@ export const Config = Schema.object({
   subagents: Schema.boolean().default(true).volatile(),
   smart: Schema.boolean().default(true).volatile(),
   corpora: Schema.boolean().default(true).volatile(),
-  fileContextTools: Schema.array(Schema.string()).default(['read', 'ops_bash', 'pwsh', 'grep', 'glob']).volatile(),
+  fileContextTools: Schema.array(Schema.string()).default([...DEFAULT_FILE_CONTEXT_TOOLS]).volatile(),
   autoStartWorker: Schema.boolean().default(true).volatile(),
 })
 
