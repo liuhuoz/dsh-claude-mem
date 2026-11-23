@@ -13,6 +13,8 @@ import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { Overview } from '../overview-types.js'
 import { ClaudeMemPage } from './page.js'
+import { Heatmap } from './heatmap.js'
+import { CompositionRing, ProjectRanking, StackedBars, lastDays, projectColor, typeColor } from './breakdown.js'
 import type { Translate } from './messages.js'
 
 /** The bridge the host registers. */
@@ -44,6 +46,7 @@ const styles = {
   status: { display: 'flex', flexWrap: 'wrap', gap: '6px 14px', alignItems: 'center', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } as const,
   pill: { fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
   kpis: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 9 } as const,
+  charts: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } as const,
   card: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 2 } as const,
   kpiValue: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' } as const,
   kpiLabel: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -196,13 +199,58 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
   )
 }
 
-/** The distribution tab, waiting for the aggregation batch. */
+/** The distribution tab: daily columns, twelve weeks of activity, composition and ranking. */
 function TrendTab({ t }: { t: Translate }): JSX.Element {
+  const [data, setData] = useState<Overview | undefined>(undefined)
+
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const response = await fetch(OVERVIEW_PATH, { headers: { accept: 'application/json' } })
+        if (!response.ok) return
+        const payload = await response.json() as Overview
+        if (alive) setData(payload)
+      } catch {
+        /* the overview tab reports failures; this tab stays empty */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  if (data === undefined) return <span style={styles.muted}>{t('overviewLoading')}</span>
+  const distributions = data.distributions
+  if (distributions === null) return <div style={styles.section}><span style={styles.muted}>{t('overviewUnavailable')}</span></div>
+
+  const days = lastDays(14)
+  const typeKeys = distributions.types.map((entry) => entry.key)
+  const projectKeys = distributions.projects.map((entry) => entry.key)
+
   return (
-    <div style={styles.section}>
-      <h4 style={styles.sectionTitle}>{t('tabTrend')}</h4>
-      <span style={styles.muted}>{t('trendPending')}</span>
-    </div>
+    <>
+      <div style={styles.charts}>
+        <div style={styles.section}>
+          <StackedBars days={days} buckets={distributions.days} dimension="type" keys={typeKeys} t={t} />
+        </div>
+        <div style={styles.section}>
+          <StackedBars days={days} buckets={distributions.days} dimension="project" keys={projectKeys} t={t} />
+        </div>
+      </div>
+      <div style={styles.section}>
+        <Heatmap buckets={distributions.days} total={distributions.total} t={t} />
+      </div>
+      <div style={styles.charts}>
+        <div style={styles.section}>
+          <CompositionRing entries={distributions.types} title={t('compositionType')} t={t} colorOf={(key) => typeColor(key)} />
+        </div>
+        <div style={styles.section}>
+          <CompositionRing entries={distributions.projects} title={t('compositionProject')} t={t} colorOf={(key, index) => projectColor(key, index)} />
+        </div>
+      </div>
+      <div style={styles.section}>
+        <ProjectRanking projects={distributions.projects} excluded={data.projects?.excluded ?? 0} t={t} />
+      </div>
+    </>
   )
 }
 
