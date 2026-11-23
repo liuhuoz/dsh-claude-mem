@@ -64,7 +64,8 @@ function publishedWorkerPort(): number | undefined {
  * would be a false choice.
  *
  * `timeoutMs`, `dedupe`, `project` and `platformSource` stay plain, so changing
- * them still needs a reload.
+ * them still needs a reload. `platformSource` only narrows reads: every capture
+ * writes `DSH_PLATFORM`, because claude-mem keys a session on the platform.
  */
 export const Config = Schema.object({
   baseUrl: Schema.string().default('').volatile(),

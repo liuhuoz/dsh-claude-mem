@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { observationPayload } from '../src/hooks.js'
+import { observationIngest, observationPayload } from '../src/hooks.js'
 
 const SUCCESS = {
   cwd: 'C:/work',
@@ -50,5 +50,46 @@ describe('observationPayload', () => {
 
   it('defaults a missing tool_input to an empty object', () => {
     expect(observationPayload({ ...SUCCESS, toolInput: undefined }, { sessionId: 's' })).toMatchObject({ tool_input: {} })
+  })
+
+  it('carries the tool call id when the harness has one', () => {
+    expect(observationPayload(SUCCESS, { sessionId: 's' }, 'call-1')).toMatchObject({ tool_use_id: 'call-1' })
+  })
+
+  it('omits the id rather than sending an empty one', () => {
+    expect(observationPayload(SUCCESS, { sessionId: 's' })).not.toHaveProperty('tool_use_id')
+  })
+})
+
+describe('observationIngest', () => {
+  it('builds the direct-capture body with the dsh platform', () => {
+    const body = observationIngest(SUCCESS, { sessionId: 'session-1' }, 'call-9', 1_795_400_000_000)
+    expect(body).toEqual({
+      contentSessionId: 'session-1',
+      toolName: 'Read',
+      toolInput: { file_path: 'a.ts' },
+      toolResponse: { content: [{ type: 'text', text: 'file body' }], is_error: false },
+      cwd: 'C:/work',
+      platformSource: 'dsh',
+      eventOccurredAtEpochMs: 1_795_400_000_000,
+      toolUseId: 'call-9',
+    })
+  })
+
+  it('keeps the subagent attribution the CLI path drops', () => {
+    const body = observationIngest(FAILURE, { sessionId: 'parent-1', agentId: 'child-1', agentType: 'explore' })
+    expect(body).toMatchObject({
+      agentId: 'child-1',
+      agentType: 'explore',
+      toolName: 'Bash',
+      toolResponse: { is_error: true, error: 'exit code 1' },
+    })
+  })
+
+  it('omits the id and the attribution when neither is present', () => {
+    const body = observationIngest(SUCCESS, { sessionId: 's' })
+    expect(body).not.toHaveProperty('toolUseId')
+    expect(body).not.toHaveProperty('agentId')
+    expect(body).not.toHaveProperty('agentType')
   })
 })

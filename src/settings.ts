@@ -50,6 +50,16 @@ const DEFAULTS = {
   dedupe: true,
 } as const
 
+/**
+ * The platform identity this plugin writes into claude-mem.
+ *
+ * claude-mem keys a session on `(platform_source, content_session_id)` and
+ * resolves every capture through that pair, so one session's writes must all
+ * carry the same value. A live setting would let a toggle split one session
+ * into two rows, which is why the identity is a constant and not a field.
+ */
+export const DSH_PLATFORM = 'dsh'
+
 export const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'pwsh', 'subagent', 'subagent_fork']
 
 /** The schema default is derived from these two lists, so they are the only place a default lives. */

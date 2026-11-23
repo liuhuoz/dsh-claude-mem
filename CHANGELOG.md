@@ -2,6 +2,19 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## Unreleased
+
+### Changed
+
+- Captures now report the plugin's own platform. claude-mem keys a session on `(platform_source, content_session_id)`, so the identity is a constant (`dsh`) carried by every write instead of one the CLI decided: session init and summaries put it on their HTTP bodies, and tool results go straight to `POST /api/sessions/observations`.
+- Tool results no longer spawn the `claude-mem` CLI. Direct capture drops the per-call process start (measured 386–650 ms), and because DSH's call id now travels as `tool_use_id`, the raw `tool_uses` backup and the `already_processed` dedupe finally cover this plugin's own captures. A failed direct capture falls back to `claude-mem hook dsh observation`, which keeps platform `dsh` and claude-mem's own spool.
+- A delegated run's end is filed through `POST /api/work-state/entries` as the same `agent-lifecycle` entry the upstream SubagentStop hook writes, with `platform_source=dsh`. It retries three times and then drops: the entry is one more piece of My Work evidence, not memory.
+- `platformSource` in the config is now a read filter only (empty means every platform's memory); it is no longer written to captures.
+
+### Notes
+
+- No backfill. Sessions captured before this change stay on `claude`, and an unfiltered read still sees them.
+
 ## 1.0.1
 
 ### Changed

@@ -20,7 +20,8 @@ import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import type { WorkerClient } from './worker.js'
-import type { LiveSettings } from './settings.js'
+import { DSH_PLATFORM, type LiveSettings } from './settings.js'
+import type { MemObservationIngest } from './types.js'
 
 /** Read current settings; called wherever a value is used, never once at startup. */
 export type SettingsSource = () => LiveSettings
@@ -54,25 +55,6 @@ interface SubagentRunStart {
 /** `subagent/end` carries the same identity plus a terminal `stopReason`. */
 interface SubagentRunEnd extends SubagentRunStart {
   readonly stopReason?: string
-  /** The run's closing message, in the shape claude-mem already reads from Claude Code. */
-  readonly lastAssistantMessage?: readonly unknown[]
-}
-
-/**
- * Flatten a `ContentBlock[]` into the plain string Claude Code puts in
- * `last_assistant_message`. Anything that is not text is skipped: claude-mem's
- * own normalizer expects a string there.
- */
-export function lastMessageText(blocks: readonly unknown[] | undefined): string | undefined {
-  if (!Array.isArray(blocks)) return undefined
-  const parts: string[] = []
-  for (const block of blocks) {
-    if (block === null || typeof block !== 'object') continue
-    const { type, text } = block as { type?: unknown; text?: unknown }
-    if (type === 'text' && typeof text === 'string' && text.trim().length > 0) parts.push(text)
-  }
-  const joined = parts.join('\n').trim()
-  return joined.length > 0 ? joined : undefined
 }
 
 /** Session header fields this module reads; the published type is narrower. */
@@ -87,6 +69,9 @@ interface LooseHeader {
 function headerOf(agent: Agent): LooseHeader {
   return agent.session.header as unknown as LooseHeader
 }
+
+/** How long one direct capture may take before it is handed to the CLI. */
+export const OBSERVATION_TIMEOUT_MS = 5_000
 
 let workerBootAt = 0
 
@@ -149,15 +134,27 @@ export interface ObservationFields {
 }
 
 /**
- * Build the hook payload for one observed tool result.
+ * What claude-mem stores for one result: the text body, or the failure marker.
  *
- * The event stays `PostToolUse` for successes and failures alike: claude-mem's
- * workers read the structured failure marker out of `tool_response`
- * (`{ is_error: true, error }`), the same shape the harnesses that only expose
- * one post-tool event send. A separate failure event is Claude Code's transport
- * detail, not a requirement of the observation pipeline.
+ * The event stays `PostToolUse` for failures too: the pipeline reads the
+ * structured marker out of `tool_response` (`{ is_error: true, error }`), the
+ * shape the harnesses that expose a single post-tool event already send.
  */
-export function observationPayload(fields: ObservationFields, attribution: ToolAttribution): Record<string, unknown> {
+function toolResponseOf(fields: ObservationFields): Record<string, unknown> {
+  return fields.failed
+    ? { is_error: true, error: fields.text }
+    : { content: [{ type: 'text', text: fields.text }], is_error: false }
+}
+
+/**
+ * The hook payload Claude Code would send for this call — the shape the CLI
+ * fallback feeds to `claude-mem hook dsh observation`.
+ */
+export function observationPayload(
+  fields: ObservationFields,
+  attribution: ToolAttribution,
+  toolUseId?: string,
+): Record<string, unknown> {
   return {
     session_id: attribution.sessionId,
     transcript_path: '',
@@ -165,9 +162,8 @@ export function observationPayload(fields: ObservationFields, attribution: ToolA
     hook_event_name: 'PostToolUse',
     tool_name: hookToolName(fields.toolName),
     tool_input: fields.toolInput ?? {},
-    ...fields.failed
-      ? { tool_response: { is_error: true, error: fields.text } }
-      : { tool_response: { content: [{ type: 'text', text: fields.text }], is_error: false } },
+    ...toolUseId === undefined ? {} : { tool_use_id: toolUseId },
+    tool_response: toolResponseOf(fields),
     // Subagent work is filed against the parent session and labelled, never as a
     // session of its own: the parent is what the user reads.
     ...attribution.agentId === undefined ? {} : { agent_id: attribution.agentId },
@@ -176,11 +172,41 @@ export function observationPayload(fields: ObservationFields, attribution: ToolA
 }
 
 /**
- * Feed one tool result through claude-mem's own observation pipeline. The hook
- * launcher runs the observer model, produces a semantic observation, and
- * attributes it to the real content session.
+ * The same call as a direct `POST /api/sessions/observations` body.
+ *
+ * `platformSource` is the field the CLI can never set for us: claude-mem takes
+ * the platform from the adapter name there, and the platform is part of the
+ * session key. `toolUseId` unlocks the raw `tool_uses` backup and the
+ * `already_processed` dedupe, neither of which the CLI path could reach.
+ */
+export function observationIngest(
+  fields: ObservationFields,
+  attribution: ToolAttribution,
+  toolUseId?: string,
+  now = Date.now(),
+): MemObservationIngest {
+  return {
+    contentSessionId: attribution.sessionId,
+    toolName: hookToolName(fields.toolName),
+    toolInput: fields.toolInput ?? {},
+    toolResponse: toolResponseOf(fields),
+    cwd: fields.cwd,
+    platformSource: DSH_PLATFORM,
+    eventOccurredAtEpochMs: now,
+    ...toolUseId === undefined ? {} : { toolUseId },
+    ...attribution.agentId === undefined ? {} : { agentId: attribution.agentId },
+    ...attribution.agentType === undefined ? {} : { agentType: attribution.agentType },
+  }
+}
+
+/**
+ * Feed one tool result to claude-mem's own capture route.
+ *
+ * The worker queues generation from it; a refused call falls back to the CLI,
+ * whose spool keeps the event until the worker answers.
  */
 function recordToolUse(
+  worker: WorkerClient,
   exec: ToolExecution,
   agent: Agent,
   text: string,
@@ -190,19 +216,37 @@ function recordToolUse(
 ): void {
   const header = agent.session.header
   const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
-  const payload = observationPayload({ cwd, toolName: exec.name, toolInput: exec.arguments, text, failed }, attribution)
+  const fields: ObservationFields = { cwd, toolName: exec.name, toolInput: exec.arguments, text, failed }
+  const toolUseId = exec.callId
+  worker
+    .ingestObservation(observationIngest(fields, attribution, toolUseId), AbortSignal.timeout(OBSERVATION_TIMEOUT_MS))
+    .catch(() => {
+      // Direct capture failed. The CLI keeps its own spool, so the event is not
+      // lost while the worker restarts; it writes platform `dsh` too, which is
+      // what keeps one session in one row. Only this event loses its agent label.
+      ensureWorkerStarted(settings)
+      recordToolUseFallback(fields, attribution, toolUseId, settings)
+    })
+}
+
+/** Capture through claude-mem's own CLI, which spools while the worker is down. */
+function recordToolUseFallback(
+  fields: ObservationFields,
+  attribution: ToolAttribution,
+  toolUseId: string | undefined,
+  settings: LiveSettings,
+): void {
+  const payload = observationPayload(fields, attribution, toolUseId)
   try {
-    const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'observation'], {
+    const child = spawn(hookLauncher(settings), ['hook', 'dsh', 'observation'], {
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,
     })
-    child.on('error', () => {
-      ensureWorkerStarted(settings)
-    })
+    child.on('error', () => {})
     child.stdin.on('error', () => {})
     child.stdin.end(JSON.stringify(payload))
   } catch {
-    ensureWorkerStarted(settings)
+    // Capture never breaks a tool call, and this is already the last resort.
   }
 }
 
@@ -252,13 +296,6 @@ export function rememberSubagent(agent: Agent, subagents: Map<string, SubagentId
 }
 
 /**
- * Archive the end of a delegated run through claude-mem's own SubagentStop hook.
- *
- * Only the identity is sent: the child's last message and stop reason already
- * reach memory as the parent's tool result, and claude-mem drops them here too.
- * Best-effort: a failed archive never breaks the parent turn.
- */
-/**
  * Run an archive once per child.
  *
  * `subagent/end` and `agent/disposed` describe the same run from two angles, and
@@ -282,45 +319,82 @@ function withAgentType(identity: SubagentIdentity, child: Agent | undefined): Su
   return agentType === undefined ? identity : { ...identity, agentType }
 }
 
-export function subagentStopPayload(
+/**
+ * claude-mem's `agent-lifecycle` entry for one delegated run that ended.
+ *
+ * Field for field what the upstream SubagentStop hook stores, with the platform
+ * this plugin writes. The list carries no writer guard, so the HTTP route
+ * accepts it — and only My Work reads it back, as one more piece of evidence.
+ */
+export function subagentStopFields(
   childSessionId: string,
   identity: SubagentIdentity,
-  cwd: string | undefined,
-  lastMessage: string | undefined,
+  now = Date.now(),
 ): Record<string, unknown> {
-  // Mirrors Claude Code's SubagentStop input, field for field. What claude-mem
-  // does with each one — today it keeps the identity and drops the message — is
-  // its own policy, not something this adapter decides.
   return {
-    session_id: identity.parentSessionId,
-    cwd: cwd !== undefined && cwd.length > 0 ? cwd : process.cwd(),
-    hook_event_name: 'SubagentStop',
+    task: `Agent ${childSessionId} in ${DSH_PLATFORM} session ${identity.parentSessionId}`,
+    status: 'done',
+    platform_source: DSH_PLATFORM,
+    content_session_id: identity.parentSessionId,
     agent_id: childSessionId,
-    ...identity.agentType === undefined ? {} : { agent_type: identity.agentType },
-    ...lastMessage === undefined ? {} : { last_assistant_message: lastMessage },
+    agent_type: identity.agentType ?? null,
+    stopped_at: new Date(now).toISOString(),
+    stopped_at_epoch: now,
+    stop_source: 'subagent-stop-hook',
   }
 }
 
+/** Waits between archive attempts; the entry is dropped after the last one. */
+export const ARCHIVE_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000, 10_000]
+
+/**
+ * Write one archive entry, retrying a few times before giving up.
+ *
+ * A worker that is merely starting recovers inside this window; one that stays
+ * down loses a work-view hint (the launch's own `returnedAtEpoch` still says the
+ * call returned), which is why no disk-backed outbox is kept for it: claude-mem
+ * cannot accept this entry without an agent id any other way.
+ */
+export async function archiveSubagentStop(
+  write: (cwd: string, fields: Record<string, unknown>) => Promise<unknown>,
+  cwd: string,
+  fields: Record<string, unknown>,
+  options: {
+    readonly delays?: readonly number[]
+    readonly onRetry?: () => void
+    readonly sleep?: (ms: number) => Promise<void>
+  } = {},
+): Promise<boolean> {
+  const delays = options.delays ?? ARCHIVE_RETRY_DELAYS_MS
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      await write(cwd, fields)
+      return true
+    } catch {
+      if (attempt === delays.length) return false
+      options.onRetry?.()
+      await sleep(delays[attempt] ?? 0)
+    }
+  }
+  return false
+}
+
 function recordSubagentStop(
+  worker: WorkerClient,
   childSessionId: string,
   identity: SubagentIdentity,
   settings: LiveSettings,
   cwd: string | undefined,
-  lastMessage: string | undefined,
 ): void {
   if (!settings.subagents) return
-  const payload = subagentStopPayload(childSessionId, identity, cwd, lastMessage)
-  try {
-    const child = spawn(hookLauncher(settings), ['hook', 'claude-code', 'subagent-stop'], {
-      stdio: ['pipe', 'ignore', 'ignore'],
-      windowsHide: true,
-    })
-    child.on('error', () => {})
-    child.stdin.on('error', () => {})
-    child.stdin.end(JSON.stringify(payload))
-  } catch {
-    // Archiving is best-effort, like every other hook this module drives.
-  }
+  const target = cwd !== undefined && cwd.length > 0 ? cwd : process.cwd()
+  void archiveSubagentStop(
+    (at, fields) => worker.workStateWrite({ cwd: at, list: 'agent-lifecycle', fields }),
+    target,
+    subagentStopFields(childSessionId, identity),
+    { onRetry: () => ensureWorkerStarted(settings) },
+  )
 }
 
 /** Subagent sessions get their context from the parent, never from global memory. */
@@ -349,7 +423,7 @@ function recordPrompt(worker: WorkerClient, agent: Agent, messages: readonly Use
   if (text.length === 0) return
   const project = projectName(agent, settings)
   worker
-    .sessionInit({ contentSessionId: agent.session.id, project, prompt: text, ...platform(settings) })
+    .sessionInit({ contentSessionId: agent.session.id, project, prompt: text, ...writePlatform() })
     .catch(() => {
       ensureWorkerStarted(settings)
     })
@@ -463,7 +537,7 @@ export async function injectSessionContext(
   try {
     // The session row is created by recordPrompt() carrying the real prompt
     // text, so no placeholder "[media prompt]" row is written here.
-    const text = await worker.context({ projects: project, ...platform(settings) })
+    const text = await worker.context({ projects: project, ...readPlatform(settings) })
     if (text.length === 0) return
     const message = memoryMessage(text)
     agent.inject(message)
@@ -530,11 +604,11 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     // run that vanished without one and has no closing message.
     archiveOnce(archived, agent.session.id, () => {
       recordSubagentStop(
+        worker,
         agent.session.id,
         withAgentType(identity, agent),
         getSettings(),
         parentCwd(agents, identity.parentSessionId),
-        undefined,
       )
     })
   })
@@ -562,11 +636,11 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     subagents.delete(childId)
     archiveOnce(archived, childId, () => {
       recordSubagentStop(
+        worker,
         childId,
         withAgentType(identity, child),
         getSettings(),
         parentCwd(agents, identity.parentSessionId),
-        lastMessageText(info.lastAssistantMessage),
       )
     })
   })
@@ -606,7 +680,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
-    if (settings.ingest) observeToolResult(exec, result, settings, subagents)
+    if (settings.ingest) observeToolResult(worker, exec, result, settings, subagents)
     return next()
   })
 
@@ -625,6 +699,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 }
 
 function observeToolResult(
+  worker: WorkerClient,
   exec: ToolExecution,
   result: Readonly<ToolExecutionResult>,
   settings: LiveSettings,
@@ -642,13 +717,13 @@ function observeToolResult(
   // result; when the call produced no body of its own the error message is it.
   const body = text.length > 0 ? text : result.isError ? result.error.message.trim() : ''
   if (body.length === 0) return
-  recordToolUse(exec, agent, body, settings, attributionOf(agent, subagents), result.isError)
+  recordToolUse(worker, exec, agent, body, settings, attributionOf(agent, subagents), result.isError)
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
   const project = projectName(agent, settings)
   try {
-    await worker.sessionSummarize({ contentSessionId: agent.session.id, project, ...platform(settings) })
+    await worker.sessionSummarize({ contentSessionId: agent.session.id, project, ...writePlatform() })
   } catch {
     // Summarization is best-effort.
     ensureWorkerStarted(settings)
@@ -758,7 +833,19 @@ function projectName(agent: Agent, settings: LiveSettings): string {
   return 'dsh'
 }
 
-function platform(settings: LiveSettings): { platformSource?: string } {
+/**
+ * Platform identity carried by everything this plugin writes.
+ *
+ * It is a constant, not a setting: claude-mem resolves a session through
+ * `(platform_source, content_session_id)`, so a toggle could split one session
+ * into two rows.
+ */
+function writePlatform(): { platformSource: string } {
+  return { platformSource: DSH_PLATFORM }
+}
+
+/** Optional read filter; empty means every platform's memory, including history. */
+function readPlatform(settings: LiveSettings): { platformSource?: string } {
   return settings.platformSource.length > 0 ? { platformSource: settings.platformSource } : {}
 }
 

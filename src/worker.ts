@@ -14,6 +14,7 @@ import type {
   MemDumbSearchResult,
   MemGetObservationsRequest,
   MemObservation,
+  MemObservationIngest,
   MemSaveRequest,
   MemSaveResult,
   MemSearchRequest,
@@ -127,6 +128,31 @@ export class WorkerClient {
       ? (raw as { observations?: unknown }).observations
       : undefined
     return Array.isArray(observations) && observations.length > 0
+  }
+
+  /**
+   * Hand one tool result to the worker's own capture pipeline.
+   *
+   * `queued` and `skipped` are both answers: a skip is claude-mem's own filter
+   * (memory-retrieval tools, the skip list, a deleted session), not a failure,
+   * so only a thrown request needs a fallback.
+   */
+  async ingestObservation(request: MemObservationIngest, signal?: AbortSignal): Promise<'queued' | 'skipped'> {
+    const body: Record<string, unknown> = {
+      contentSessionId: request.contentSessionId,
+      tool_name: request.toolName,
+      cwd: request.cwd,
+      platformSource: request.platformSource,
+    }
+    if (request.toolInput !== undefined) body.tool_input = request.toolInput
+    if (request.toolResponse !== undefined) body.tool_response = request.toolResponse
+    if (request.toolUseId !== undefined) body.tool_use_id = request.toolUseId
+    if (request.agentId !== undefined) body.agentId = request.agentId
+    if (request.agentType !== undefined) body.agentType = request.agentType
+    if (request.eventOccurredAtEpochMs !== undefined) body.eventOccurredAtEpochMs = request.eventOccurredAtEpochMs
+    const raw: unknown = await this.requestJson<unknown>('/api/sessions/observations', { method: 'POST', body }, signal)
+    const answer = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    return answer.status === 'skipped' ? 'skipped' : 'queued'
   }
 
   async getObservations(request: MemGetObservationsRequest, signal?: AbortSignal): Promise<MemSearchResult> {

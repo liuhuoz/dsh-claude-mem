@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Config } from '../src/index.js'
-import { resolveSettings } from '../src/settings.js'
+import { DSH_PLATFORM, resolveSettings } from '../src/settings.js'
 
 /** Stand-in for schemastery's volatile cell, which the host writes in place. */
 function cell<T>(value: T) {
@@ -76,6 +76,15 @@ describe('resolveSettings', () => {
     expect(resolveSettings({ toolFilter: { names: [] } }).toolFilter.names).toEqual(defaults)
     expect(resolveSettings({ toolFilter: { names: 'read' } }).toolFilter.names).toEqual(defaults)
     expect(resolveSettings({ toolFilter: null }).toolFilter.names).toEqual(defaults)
+  })
+})
+
+describe('platform identity', () => {
+  it('writes one fixed identity and keeps the setting a read filter', () => {
+    expect(DSH_PLATFORM).toBe('dsh')
+    // The config field is the optional read filter, never the write identity.
+    expect(resolveSettings({}).platformSource).toBe('')
+    expect(resolveSettings({ platformSource: 'dsh' }).platformSource).toBe('dsh')
   })
 })
 

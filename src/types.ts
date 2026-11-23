@@ -173,3 +173,23 @@ export interface MemSessionSummarizeRequest {
   readonly project?: string
   readonly platformSource?: string
 }
+
+/**
+ * One tool result headed for the worker's own capture pipeline
+ * (`POST /api/sessions/observations`).
+ *
+ * The worker queues generation from this; `queued` and `skipped` both mean it
+ * took the call, so a skip is a decision, not a failure.
+ */
+export interface MemObservationIngest {
+  readonly contentSessionId: string
+  readonly toolName: string
+  readonly toolInput?: unknown
+  readonly toolResponse?: unknown
+  readonly cwd: string
+  readonly platformSource: string
+  readonly toolUseId?: string
+  readonly agentId?: string
+  readonly agentType?: string
+  readonly eventOccurredAtEpochMs?: number
+}
