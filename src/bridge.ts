@@ -30,6 +30,49 @@ interface BridgeRequest {
   url?: string
 }
 
+/** Minimal shape of the host connection service that admits HTTP requests. */
+interface ConnectionAdmission {
+  admit?(request: unknown): unknown
+  requestRejection?(request: unknown): unknown
+}
+
+/**
+ * Ask the host connection service whether this request may reach the bridge.
+ *
+ * This mirrors the admission check the sibling host-bridge plugins use: `admit()`
+ * where the host exposes it, `requestRejection()` otherwise. No reachable service
+ * leaves the route open, so an older host without the admission API still renders
+ * the panel; a service that answers with something unrecognisable fails closed
+ * rather than guessing that the request is fine.
+ * @param request - the inbound HTTP request, as the server received it.
+ * @param connection - the host connection service, when one is reachable.
+ * @returns the status to reject with, or undefined to let the request through.
+ */
+export function admissionRejection(request: unknown, connection: unknown): number | undefined {
+  if (connection === null || typeof connection !== 'object') return undefined
+  const admission = connection as ConnectionAdmission
+  if (typeof admission.admit === 'function') {
+    try {
+      const answer = admission.admit(request)
+      if (answer === null || typeof answer !== 'object') return 503
+      if ('rejection' in answer) {
+        const rejection = (answer as { rejection?: unknown }).rejection
+        return typeof rejection === 'number' ? rejection : 503
+      }
+      return 'peer' in answer ? undefined : 503
+    } catch {
+      return 503
+    }
+  }
+  if (typeof admission.requestRejection !== 'function') return 503
+  try {
+    const rejection = admission.requestRejection(request)
+    return typeof rejection === 'number' ? rejection : undefined
+  } catch {
+    return 503
+  }
+}
+
 /** A route as `webServer.register` accepts it. */
 export interface WebRoute {
   kind: 'exact'
@@ -125,11 +168,33 @@ export function registerHealthBridge(ctx: Context): void {
  */
 export function registerOverviewBridge(ctx: Context, baseUrl: () => string): void {
   ctx.inject(['webServer'], (sctx: Context) => {
+    // Admission lives on the connection service: it applies the Host/Origin fence
+    // and the browser's authenticated peer. A host without that service keeps the
+    // route open rather than losing the panel.
+    let connectionContext: Context = sctx
+    ctx.inject(['connection'], (actx: Context) => {
+      connectionContext = actx
+      actx.effect(() => () => {
+        if (connectionContext === actx) connectionContext = sctx
+      }, 'dsh-claude-mem: overview admission context')
+    })
+    const connection = (): unknown => {
+      try {
+        return (connectionContext as unknown as { get(name: string): unknown }).get('connection')
+      } catch {
+        return undefined
+      }
+    }
     sctx.effect(() => {
       const route: WebRoute = {
         kind: 'exact',
         path: OVERVIEW_BRIDGE_PATH,
-        handler: async (_req, res) => {
+        handler: async (req, res) => {
+          const rejection = admissionRejection(req, connection())
+          if (rejection !== undefined) {
+            writeJson(res, rejection, { ok: false, code: rejection === 503 ? 'admission-unavailable' : 'unauthorized' })
+            return
+          }
           const target = baseUrl()
           const now = Date.now()
           if (overviewCache !== undefined && overviewCache.baseUrl === target && now - overviewCache.at < OVERVIEW_CACHE_MS) {
