@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { applyMemoryHooks } from '../src/hooks.ts'
 import type { LiveSettings } from '../src/settings.ts'
@@ -95,5 +98,68 @@ describe('injection wiring', () => {
     await tick()
 
     expect(inject).toHaveBeenCalledTimes(2)
+  })
+})
+describe('read gate wiring', () => {
+  const roots: string[] = []
+
+  function workspace(bytes: number): string {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-gate-'))
+    roots.push(root)
+    writeFileSync(join(root, 'big.ts'), 'x'.repeat(bytes))
+    return root
+  }
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  })
+
+  /** Register the real hooks with the gate on and run one pre-execute. */
+  async function gate(root: string, epochOf: (mtimeMs: number) => number) {
+    const handlers: Record<string, ((...args: unknown[]) => unknown)[]> = {}
+    const ctx = {
+      on: (event: string, handler: (...args: unknown[]) => unknown) => {
+        ;(handlers[event] ??= []).push(handler)
+        return () => {}
+      },
+      logger: { debug: () => {} },
+    } as unknown as Parameters<typeof applyMemoryHooks>[0]
+    const file = join(root, 'big.ts')
+    const byFile = vi.fn(async () => [{ id: 1, title: 'note', createdAtEpoch: epochOf(statSync(file).mtimeMs) }])
+    const worker = { byFile } as unknown as Parameters<typeof applyMemoryHooks>[1]
+    const base = settings()
+    applyMemoryHooks(ctx, worker, () => ({ ...base, fileContextGate: true, autoStartWorker: false }))
+    let allowed = false
+    const next = async () => {
+      allowed = true
+      return { kind: 'allow' } as never
+    }
+    const exec = {
+      name: 'read',
+      arguments: { file_path: 'big.ts' },
+      agent: { session: { id: 'session-1', header: { cwd: root } } },
+    } as never
+    const decision = await handlers['tools/pre-execute']![0]!(exec, next) as { kind?: string } | undefined
+    return { decision, allowed }
+  }
+
+  it('denies a full read while the file is still covered by memory', async () => {
+    const root = workspace(40 * 1024)
+    const { decision, allowed } = await gate(root, mtimeMs => mtimeMs + 60_000)
+    expect(allowed).toBe(false)
+    expect(decision?.kind).toBe('deny')
+  })
+
+  it('lets the read through once the file changed after its notes', async () => {
+    const root = workspace(40 * 1024)
+    const { decision, allowed } = await gate(root, mtimeMs => mtimeMs - 1)
+    expect(allowed).toBe(true)
+    expect(decision?.kind).toBe('allow')
+  })
+
+  it('leaves a file under the gate size alone', async () => {
+    const root = workspace(4 * 1024)
+    const { allowed } = await gate(root, mtimeMs => mtimeMs + 60_000)
+    expect(allowed).toBe(true)
   })
 })
