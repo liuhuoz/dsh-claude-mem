@@ -10,8 +10,7 @@
  * Token savings follow claude-mem's own arithmetic: bytes of "what it would
  * have cost to rediscover this natively" minus what the injection actually
  * spent, divided by the former. Those two totals only exist in claude-mem's
- * daily telemetry file, so this module reads that file for the worker's current
- * day (UTC — the clock the writer stamps it with).
+ * daily telemetry file, so this module reads the day that file carries.
  * @module dsh-claude-mem/overview
  */
 
@@ -65,26 +64,23 @@ function text(value: unknown): string | undefined {
 }
 
 /**
- * Today on the day key claude-mem's telemetry writer stamps: UTC, not local.
+ * Read the token savings claude-mem's telemetry file carries.
  *
- * The worker writes `day` as `new Date(now).toISOString().slice(0, 10)`, so it
- * rolls at UTC midnight. Comparing that key with a local date hid the savings
- * numbers for the first hours of every local day east of the meridian.
- * @param now - the instant to place on the worker's day grid.
- * @returns the day key the telemetry file uses.
+ * The file holds one day, stamped on the writer's UTC clock, and the writer only
+ * rolls it when it has something to record. Whatever day it carries is therefore
+ * the newest data there is: showing it beats blanking the line at local midnight
+ * or on a quiet day, and `day` travels in the payload so the page can say which
+ * day the numbers belong to.
+ * @param options - resolved worker URL plus test seams.
+ * @returns the day's totals, or null when the file has none.
  */
-function telemetryDay(now: number): string {
-  return new Date(now).toISOString().slice(0, 10)
-}
-
-/** Read today's token savings out of claude-mem's telemetry file. */
-async function readSavings(options: OverviewOptions, now: number): Promise<Overview['savings']> {
+async function readSavings(options: OverviewOptions): Promise<Overview['savings']> {
   const file = options.telemetryPath ?? path.join(homedir(), '.claude-mem', 'telemetry-daily.json')
   try {
     const payload = record(JSON.parse(await readFile(file, 'utf8')))
     if (payload === undefined) return null
     const day = text(payload.day)
-    if (day === undefined || day !== telemetryDay(now)) return null
+    if (day === undefined) return null
     const rollups = record(payload.rollups)
     const injected = record(rollups?.context_injected_rollup)
     const sums = record(injected?.sums)
@@ -122,7 +118,7 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
     getJson(options, '/api/projects'),
     getJson(options, '/api/observations?limit=5'),
     getJson(options, '/api/sessions?limit=50'),
-    readSavings(options, now),
+    readSavings(options),
   ])
 
   const healthBody = health.ok ? record(health.value) : undefined

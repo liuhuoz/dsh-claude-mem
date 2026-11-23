@@ -173,7 +173,7 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
           <span style={{ fontSize: 12.5 }}>
             {t('savingsLine', { events: savings.events, read: compact(savings.readTokens), saved: compact(savings.savedTokens), percent: savings.percent })}
           </span>
-          <span style={styles.muted}>{t('savingsFoot')}</span>
+          <span style={styles.muted}>{t('savingsFoot', { day: savings.day })}</span>
         </div>
       ) : null}
 

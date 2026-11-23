@@ -99,7 +99,7 @@ describe('buildOverview', () => {
     expect(overview.injection?.chars).toBe('line one\nline two'.length)
   })
 
-  it('reports savings on the telemetry file\'s own UTC day', async () => {
+  it('reports the savings the telemetry file carries', async () => {
     const fresh = await buildOverview({
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
@@ -109,16 +109,16 @@ describe('buildOverview', () => {
     expect(fresh.savings).toMatchObject({ events: 7, readTokens: 264_000, savedTokens: 38_762_000 })
     expect(fresh.savings?.percent).toBe(Math.round((38_762_000 / (38_762_000 + 264_000)) * 100))
 
-    const stale = await buildOverview({
+    const carried = await buildOverview({
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: fakeFetch(payloads),
       telemetryPath: telemetry('2000-01-01', 1, 1),
     })
-    expect(stale.savings).toBeNull()
+    expect(carried.savings).toMatchObject({ day: '2000-01-01', readTokens: 1, savedTokens: 1 })
   })
 
-  it('keeps savings just after local midnight while the worker is still on the UTC day', async () => {
+  it('keeps showing savings after local midnight, when the file is still on the previous UTC day', async () => {
     const overview = await buildOverview({
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
@@ -133,7 +133,7 @@ describe('buildOverview', () => {
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: (async () => { throw new Error('offline') }) as unknown as typeof fetch,
-      telemetryPath: telemetry('2000-01-01', 1, 1),
+      telemetryPath: join(tmpdir(), 'overview-missing-telemetry.json'),
     })
     expect(overview.worker).toBeNull()
     expect(overview.database).toBeNull()

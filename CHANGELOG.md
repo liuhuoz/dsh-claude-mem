@@ -16,7 +16,7 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 
 ### Fixed
 
-- The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` in UTC, while the aggregator compared it with the local date, so the panel read `null` for the first hours of every local day east of the meridian; the comparison now uses the writer's own clock.
+- The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` on a UTC clock and only rolls the file when it has something to record, while the aggregator demanded the local date; east of the meridian that dropped the numbers for the first hours of every local day. The day comparison is gone: the panel shows the day the file carries and names it under the line, so a quiet day keeps the last numbers instead of an empty line.
 
 ### Notes
 
