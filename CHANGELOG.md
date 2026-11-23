@@ -14,6 +14,10 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 - The read gate consults the same lookup and now requires the file to be unchanged since its newest observation, so a file edited after its notes is no longer denied a full read.
 - The file-context tool default shrinks to `read`. `grep` and `glob` no longer attach memory: upstream fed them a pattern-search branch that this change does not implement, so they are documented as unsupported rather than silently doing nothing.
 
+### Fixed
+
+- The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` in UTC, while the aggregator compared it with the local date, so the panel read `null` for the first hours of every local day east of the meridian; the comparison now uses the writer's own clock.
+
 ### Notes
 
 - No backfill. Sessions captured before this change stay on `claude`, and an unfiltered read still sees them.

@@ -10,7 +10,8 @@
  * Token savings follow claude-mem's own arithmetic: bytes of "what it would
  * have cost to rediscover this natively" minus what the injection actually
  * spent, divided by the former. Those two totals only exist in claude-mem's
- * daily telemetry file, so this module reads that file for today only.
+ * daily telemetry file, so this module reads that file for the worker's current
+ * day (UTC — the clock the writer stamps it with).
  * @module dsh-claude-mem/overview
  */
 
@@ -63,12 +64,17 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-/** Today in the host's local time as YYYY-MM-DD. */
-function localDay(now: number): string {
-  const date = new Date(now)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return date.getFullYear() + '-' + month + '-' + day
+/**
+ * Today on the day key claude-mem's telemetry writer stamps: UTC, not local.
+ *
+ * The worker writes `day` as `new Date(now).toISOString().slice(0, 10)`, so it
+ * rolls at UTC midnight. Comparing that key with a local date hid the savings
+ * numbers for the first hours of every local day east of the meridian.
+ * @param now - the instant to place on the worker's day grid.
+ * @returns the day key the telemetry file uses.
+ */
+function telemetryDay(now: number): string {
+  return new Date(now).toISOString().slice(0, 10)
 }
 
 /** Read today's token savings out of claude-mem's telemetry file. */
@@ -78,7 +84,7 @@ async function readSavings(options: OverviewOptions, now: number): Promise<Overv
     const payload = record(JSON.parse(await readFile(file, 'utf8')))
     if (payload === undefined) return null
     const day = text(payload.day)
-    if (day === undefined || day !== localDay(now)) return null
+    if (day === undefined || day !== telemetryDay(now)) return null
     const rollups = record(payload.rollups)
     const injected = record(rollups?.context_injected_rollup)
     const sums = record(injected?.sums)

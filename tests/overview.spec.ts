@@ -4,15 +4,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildOverview } from '../src/overview.js'
 
-/** Today in local time, matching the aggregator's own day key. */
-function today(): string {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return date.getFullYear() + '-' + month + '-' + day
+/** The day key claude-mem stamps on its daily telemetry: UTC, per the worker. */
+function utcDay(now: number): string {
+  return new Date(now).toISOString().slice(0, 10)
 }
 
-const NOW = new Date(today() + 'T12:00:00').getTime()
+/** 00:30 local (+08:00): the local date has rolled, the worker's UTC day has not. */
+const NOW = new Date('2026-11-24T00:30:00+08:00').getTime()
 
 /** Payloads keyed by the endpoint path. */
 function fakeFetch(payloads: Record<string, unknown>): typeof fetch {
@@ -69,7 +67,7 @@ describe('buildOverview', () => {
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: fakeFetch(payloads),
-      telemetryPath: telemetry(today(), 264_000, 38_762_000),
+      telemetryPath: telemetry(utcDay(NOW), 264_000, 38_762_000),
     })
     expect(overview.worker).toMatchObject({ version: '16.0.3', port: 37777, activeSessions: 1 })
     expect(overview.database).toMatchObject({ observations: 2500, summaries: 630 })
@@ -83,7 +81,7 @@ describe('buildOverview', () => {
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: fakeFetch(payloads),
-      telemetryPath: telemetry(today(), 1, 1),
+      telemetryPath: telemetry(utcDay(NOW), 1, 1),
     })
     expect(overview.projects).toEqual({ total: 3, active: 1, excluded: 2 })
     expect(overview.sessions).toHaveLength(1)
@@ -95,18 +93,18 @@ describe('buildOverview', () => {
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: fakeFetch(payloads),
-      telemetryPath: telemetry(today(), 1, 1),
+      telemetryPath: telemetry(utcDay(NOW), 1, 1),
     })
     expect(overview.injection).toMatchObject({ project: 'a', lines: 2 })
     expect(overview.injection?.chars).toBe('line one\nline two'.length)
   })
 
-  it('reports savings from today\'s telemetry only', async () => {
+  it('reports savings on the telemetry file\'s own UTC day', async () => {
     const fresh = await buildOverview({
       baseUrl: 'http://127.0.0.1:37777',
       now: NOW,
       fetchImpl: fakeFetch(payloads),
-      telemetryPath: telemetry(today(), 264_000, 38_762_000),
+      telemetryPath: telemetry(utcDay(NOW), 264_000, 38_762_000),
     })
     expect(fresh.savings).toMatchObject({ events: 7, readTokens: 264_000, savedTokens: 38_762_000 })
     expect(fresh.savings?.percent).toBe(Math.round((38_762_000 / (38_762_000 + 264_000)) * 100))
@@ -118,6 +116,16 @@ describe('buildOverview', () => {
       telemetryPath: telemetry('2000-01-01', 1, 1),
     })
     expect(stale.savings).toBeNull()
+  })
+
+  it('keeps savings just after local midnight while the worker is still on the UTC day', async () => {
+    const overview = await buildOverview({
+      baseUrl: 'http://127.0.0.1:37777',
+      now: NOW,
+      fetchImpl: fakeFetch(payloads),
+      telemetryPath: telemetry('2026-11-23', 475_426, 64_539_746),
+    })
+    expect(overview.savings).toMatchObject({ day: '2026-11-23', readTokens: 475_426, savedTokens: 64_539_746 })
   })
 
   it('degrades to nulls instead of throwing when the worker is unreachable', async () => {
