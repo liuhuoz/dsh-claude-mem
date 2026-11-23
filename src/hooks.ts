@@ -15,7 +15,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecution, ToolExecutionResult, PostToolDecision, PreToolDecision } from '@deepseek-ai/dsh-tools'
-import { FILE_CONTEXT_TIMEOUT_MS, GATE_MIN_BYTES, HookCliFileContext, gateCandidate, gateReason, preToolPayload, promptMentionsFile } from './file-context.js'
+import { FILE_CONTEXT_TIMEOUT_MS, FileMemoryLookup, GATE_MIN_BYTES, HttpFileContext, gateCandidate, gateReason, promptMentionsFile, type FileContextSource } from './file-context.js'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
@@ -579,6 +579,12 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   const debug = debugLogger(ctx)
 
+  /** One file's memory, shared by the read gate and the block that follows it. */
+  const fileMemory = new FileMemoryLookup(worker)
+
+  /** The file-context source: this plugin does the rendering and the dedupe now. */
+  const fileContext = new HttpFileContext(fileMemory)
+
   on('agent/created', (payload: { agent: Agent }) => {
     const { agent } = payload
     agents.set(agent.session.id, agent)
@@ -596,6 +602,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const { agent } = payload
     agents.delete(agent.session.id)
     lastPrompt.delete(agent.session.id)
+    fileContext.forget(agent.session.id)
     pendingInjections.delete(agent.session.id)
     const identity = subagents.get(agent.session.id)
     if (identity === undefined) return
@@ -673,7 +680,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   // the tool runs: the gate is the point of the feature, and a decision is the only
   // way DSH lets a plugin stop a call.
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>) => {
-    const denial = await fileReadGate(exec, getSettings(), worker, lastPrompt)
+    const denial = await fileReadGate(exec, getSettings(), fileMemory, lastPrompt)
     if (denial !== null) return denial
     return next()
   })
@@ -688,7 +695,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   // this one only starts the fetch and always forwards the decision unchanged.
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
-    if (settings.fileContext && !result.isError) startFileContext(exec, settings, pendingFileContext)
+    if (settings.fileContext && !result.isError) startFileContext(fileContext, exec, settings, pendingFileContext)
     return next()
   })
 
@@ -739,7 +746,7 @@ async function summarizeSession(worker: WorkerClient, agent: Agent, settings: Li
 async function fileReadGate(
   exec: ToolExecution,
   settings: LiveSettings,
-  worker: WorkerClient,
+  fileMemory: FileMemoryLookup,
   prompts: Map<string, string>,
 ): Promise<PreToolDecision | null> {
   if (!settings.fileContextGate) return null
@@ -762,8 +769,11 @@ async function fileReadGate(
   const typed = prompts.get(agent.session.id)
   if (typed !== undefined && promptMentionsFile(typed, absolute)) return null
   try {
-    const covered = await worker.hasObservationsFor([absolute], AbortSignal.timeout(1500))
-    if (!covered) return null
+    const memory = await fileMemory.inspect({ sessionId: agent.session.id, cwd }, absolute, AbortSignal.timeout(FILE_CONTEXT_TIMEOUT_MS))
+    if (memory === null) return null
+    // A file changed after its newest observation is no longer covered, so the
+    // full read is allowed: the gate must not deny on stale notes.
+    if (memory.mtimeMs >= memory.newestEpochMs) return null
   } catch {
     return null
   }
@@ -772,6 +782,7 @@ async function fileReadGate(
 
 /** Start one file-context fetch; the result is consumed at the next pre-step. */
 function startFileContext(
+  source: FileContextSource,
   exec: ToolExecution,
   settings: LiveSettings,
   pending: Map<string, Promise<string | null>>,
@@ -781,15 +792,12 @@ function startFileContext(
   if (!settings.fileContextTools.includes(exec.name)) return
   const header = agent.session.header
   const cwd = typeof header.cwd === 'string' && header.cwd.length > 0 ? header.cwd : process.cwd()
-  const payload = preToolPayload({
+  pending.set(agent.session.id, source.fetch({
     sessionId: agent.session.id,
     cwd,
-    name: exec.name,
+    toolName: exec.name,
     arguments: exec.arguments,
-  })
-  if (payload === null) return
-  const source = new HookCliFileContext(hookLauncher(settings), FILE_CONTEXT_TIMEOUT_MS)
-  pending.set(agent.session.id, source.fetch(payload))
+  }))
 }
 
 /**

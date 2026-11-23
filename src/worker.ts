@@ -117,17 +117,33 @@ export class WorkerClient {
     return await this.query('/api/timeline', query, signal)
   }
 
-  /** True when the worker already holds observations filed against one of these paths. */
-  async hasObservationsFor(paths: readonly string[], signal?: AbortSignal): Promise<boolean> {
-    if (paths.length === 0) return false
+  /**
+   * Observations the worker holds for any of these file paths, newest first.
+   *
+   * Paths go in every spelling the file could have been captured under; the
+   * worker's own query adds slash and `./` variants on top. `limit` defaults to
+   * the newest 15 rows, which is more than one injected block ever shows.
+   */
+  async byFile(
+    paths: readonly string[],
+    options: {
+      readonly limit?: number
+      readonly projects?: readonly string[]
+      readonly platformSource?: string
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<readonly MemObservation[]> {
+    if (paths.length === 0) return []
     const query = new URLSearchParams()
     for (const path of paths) query.append('path', path)
-    query.set('limit', '1')
+    query.set('limit', String(options.limit ?? 15))
+    for (const project of options.projects ?? []) query.append('projects', project)
+    if (options.platformSource !== undefined) query.set('platformSource', options.platformSource)
     const raw: unknown = await this.requestJson<unknown>('/api/observations/by-file', { method: 'GET', query }, signal)
     const observations = raw !== null && typeof raw === 'object'
       ? (raw as { observations?: unknown }).observations
       : undefined
-    return Array.isArray(observations) && observations.length > 0
+    return Array.isArray(observations) ? observations.map(asObservation) : []
   }
 
   /**

@@ -63,7 +63,7 @@ export const DSH_PLATFORM = 'dsh'
 export const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'pwsh', 'subagent', 'subagent_fork']
 
 /** The schema default is derived from these two lists, so they are the only place a default lives. */
-export const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read', 'bash', 'pwsh', 'grep', 'glob']
+export const DEFAULT_FILE_CONTEXT_TOOLS: readonly string[] = ['read']
 
 /**
  * Read a possibly-volatile field. A `.volatile()` field arrives as a cell with

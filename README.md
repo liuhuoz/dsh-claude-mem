@@ -59,5 +59,5 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 | 通过 claude-mem 结构化阅读代码 | 新增 `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`：给文件大纲与单个符号的源码，而不是整篇文件。由模型按需调用；仅限当前工作目录。 |
 | 知识语料库 | 新增六个 `mem_corpus_*` 工具：把记忆按主题切成语料库，可以针对某个主题提问。 |
 | 观察白名单 | 仅在上方「观察工具调用并写入记忆」开启时生效；用逗号分隔，留空表示使用默认名单（高级）。 |
-| 带入记忆的工具 | 仅在上方「读取文件时带入相关记忆」开启时生效；用逗号分隔，留空表示使用默认名单（高级）。 |
+| 带入记忆的工具 | 仅在上方「读取文件时带入相关记忆」开启时生效；用逗号分隔，默认 `read`。`ops_bash` / `pwsh` 会从命令里解析文件，需要显式加入；`grep` / `glob` 暂不支持。 |
 

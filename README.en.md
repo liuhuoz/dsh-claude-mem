@@ -59,5 +59,5 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Read code structurally through claude-mem | Adds `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`: a file outline and single-symbol source instead of whole files. The model calls them when it wants structure; scoped to the working directory. |
 | Knowledge corpora | Adds the six `mem_corpus_*` tools: topic-scoped slices of memory you can ask questions about. |
 | Observed tools | Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list (advanced). |
-| File-context tools | Only used while “Bring memory into file reads” is on. Comma-separated; leave empty for the built-in default list (advanced). |
+| File-context tools | Only used while “Bring memory into file reads” is on. Comma-separated; the default is `read`. `ops_bash` / `pwsh` are scanned for files and must be added explicitly; `grep` / `glob` are not supported yet. |
 

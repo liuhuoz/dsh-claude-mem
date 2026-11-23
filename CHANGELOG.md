@@ -10,6 +10,9 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 - Tool results no longer spawn the `claude-mem` CLI. Direct capture drops the per-call process start (measured 386–650 ms), and because DSH's call id now travels as `tool_use_id`, the raw `tool_uses` backup and the `already_processed` dedupe finally cover this plugin's own captures. A failed direct capture falls back to `claude-mem hook dsh observation`, which keeps platform `dsh` and claude-mem's own spool.
 - A delegated run's end is filed through `POST /api/work-state/entries` as the same `agent-lifecycle` entry the upstream SubagentStop hook writes, with `platform_source=dsh`. It retries three times and then drops: the entry is one more piece of My Work evidence, not memory.
 - `platformSource` in the config is now a read filter only (empty means every platform's memory); it is no longer written to captures.
+- File context no longer spawns the CLI either. A read asks `GET /api/observations/by-file` itself and renders, staleness-checks and dedupes the block here, so one read costs a millisecond-scale request instead of a 386–650 ms process start; the rendered block is byte-for-byte the one the CLI produced. `ops_bash` and `pwsh` are scanned conservatively for the files a read-only command names.
+- The read gate consults the same lookup and now requires the file to be unchanged since its newest observation, so a file edited after its notes is no longer denied a full read.
+- The file-context tool default shrinks to `read`. `grep` and `glob` no longer attach memory: upstream fed them a pattern-search branch that this change does not implement, so they are documented as unsupported rather than silently doing nothing.
 
 ### Notes
 
