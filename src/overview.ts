@@ -18,6 +18,7 @@ import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type { Overview, OverviewOptions } from './overview-types.js'
+import { readDistributions } from './distributions.js'
 
 export type { Overview, OverviewOptions }
 
@@ -224,6 +225,14 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
     }
   }
 
+  const distributions = await readDistributions({
+    baseUrl: options.baseUrl,
+    databasePath: text(statsDb?.path),
+    now,
+    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+  })
+
   return {
     worker,
     database,
@@ -235,6 +244,7 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
     sessions: sessionsOut,
     injection: injectionOut,
     savings,
+    distributions,
     fetchedAt: now,
   }
 }

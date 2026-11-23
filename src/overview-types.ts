@@ -17,7 +17,25 @@ export interface Overview {
   readonly sessions: readonly { title: string; project: string; itemCount: number; startedAt: number }[] | null
   readonly injection: { project: string; chars: number; lines: number; head: string } | null
   readonly savings: { day: string; events: number; readTokens: number; savedTokens: number; percent: number } | null
+  readonly distributions: Distributions | null
   readonly fetchedAt: number
+}
+
+/** One day of activity, split by type and project for the stacked bars. */
+export interface DayBucket {
+  readonly day: string
+  readonly total: number
+  readonly byType: Readonly<Record<string, number>>
+  readonly byProject: Readonly<Record<string, number>>
+}
+
+/** Daily buckets plus all-time type and project totals. */
+export interface Distributions {
+  readonly source: 'sqlite' | 'api'
+  readonly total: number
+  readonly days: readonly DayBucket[]
+  readonly types: readonly { key: string; count: number }[]
+  readonly projects: readonly { key: string; count: number; lastWrite: string }[]
 }
 
 /** What the aggregator needs; injected so tests never touch the network. */
