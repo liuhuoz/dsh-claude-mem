@@ -23,7 +23,7 @@ import { applyMemoryHooks } from './hooks.js'
 import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
 import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES, resolveSettings, type LiveSettings } from './settings.js'
-import { registerHealthBridge } from './bridge.js'
+import { registerHealthBridge, registerOverviewBridge } from './bridge.js'
 
 export const name = 'dsh-claude-mem'
 export const inject = ['tools', 'skills']
@@ -71,6 +71,7 @@ export const Config = Schema.object({
   baseUrl: Schema.string().default('').volatile(),
   timeoutMs: Schema.number().default(30_000),
   dedupe: Schema.boolean().default(true),
+  sidebarEntry: Schema.boolean().default(false).volatile(),
   platformSource: Schema.string().default(''),
   project: Schema.string().default(''),
   ingest: Schema.boolean().default(true).volatile(),
@@ -113,6 +114,7 @@ export function apply(ctx: Context, config: unknown): void {
   })
   applyMemoryHooks(ctx, worker, current)
   registerHealthBridge(ctx)
+  registerOverviewBridge(ctx, () => resolveBaseUrl(current().baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()))
 }
 
 function assertPositiveInteger(field: string, value: number): void {

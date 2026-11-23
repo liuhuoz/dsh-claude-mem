@@ -41,6 +41,7 @@ interface Draft {
   corpora: boolean
   fileContextTools: string
   toolNames: string
+  sidebarEntry: boolean
 }
 
 /** Health probe as the page shows it. */
@@ -92,6 +93,7 @@ function toDraft(value: Record<string, unknown> | undefined): Draft {
     corpora: source.corpora !== false,
     fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
+    sidebarEntry: source.sidebarEntry === true,
   }
 }
 
@@ -119,6 +121,7 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['smart'], value: draft.smart },
     { op: 'set', path: ['corpora'], value: draft.corpora },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
+    { op: 'set', path: ['sidebarEntry'], value: draft.sidebarEntry },
   ]
 }
 
@@ -380,6 +383,20 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
           <span>{t('corpora')}</span>
         </label>
         <span style={layout.hint}>{t('corporaHint')}</span>
+      </section>
+
+      <section style={layout.section}>
+        <h3 style={layout.title}>{t('interfaceTitle')}</h3>
+        <label style={layout.switchRow}>
+          <Switch
+            checked={draft.sidebarEntry}
+            disabled={!writable}
+            label={t('sidebarEntry')}
+            onChange={next => update('sidebarEntry', next)}
+          />
+          <span>{t('sidebarEntry')}</span>
+        </label>
+        <span style={layout.hint}>{t('sidebarEntryHint')}</span>
       </section>
 
       <DisclosureRow

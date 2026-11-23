@@ -43,6 +43,70 @@ export const en = {
   advancedTitle: 'Advanced',
   toolFilter: 'Observed tools',
   toolFilterHint: 'Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list ({names}).',
+  interfaceTitle: 'Interface',
+  sidebarEntry: 'Show a claude-mem entry in the left sidebar',
+  sidebarEntryHint: 'Adds a row that opens this page. Only DSH versions that offer sidebar panels show it.',
+  tabOverview: 'Overview',
+  tabTrend: 'Distribution',
+  tabSessions: 'Sessions',
+  tabSettings: 'Settings',
+  overviewLoading: 'Reading the worker…',
+  overviewUnavailable: 'The worker did not answer; the numbers below are unavailable.',
+  overviewRetry: 'Retry',
+  overviewWorkerDown: 'worker unreachable',
+  ovQueue: 'queue',
+  ovLastStore: 'stored {when}',
+  ovActiveSessions: '{count} active',
+  ovMcp: 'MCP {state}',
+  ovVector: 'vector search {state}',
+  ovVectorOff: 'not enabled',
+  on: 'on',
+  off: 'off',
+  kpiObservations: 'Observations',
+  kpiSessions: 'Sessions',
+  kpiSummaries: 'Summaries',
+  kpiDatabase: 'Database',
+  kpiDatabaseFoot: 'since {date}',
+  kpiActiveProjects: 'Active projects',
+  kpiProjectsFoot: '{total} total, {excluded} without dialogue',
+  savingsTitle: "Today's savings",
+  savingsLine: '{events} injections · {read} tokens in · {saved} saved ({percent}%)',
+  savingsFoot: 'claude-mem counts what rediscovering this memory from scratch would have cost.',
+  recentTitle: 'Recent observations',
+  openViewer: 'Open viewer ↗',
+  trendPending: 'Aggregation is decided (read the SQLite mirror, fall back to paging) and lands in the next batch. Until then this tab stays empty.',
+  injectionTitle: 'Latest injection · {project}',
+  injectionSize: '{chars} characters · {lines} lines',
+  sortRecent: 'Recent',
+  sortItems: 'By size',
+  searchPlaceholder: 'Search titles…',
+  sessionItems: '{count} observations',
+  sessionStarted: 'started {when}',
+  sessionsEmpty: 'No session has produced a summary yet.',
+  timeJustNow: 'just now',
+  timeMinutes: '{count} min ago',
+  timeHours: '{count} h ago',
+  timeDays: '{count} d ago',
+  heatTitle: 'Last {weeks} weeks · daily writes',
+  heatRecent: 'Last 7 days {count} · {percent}% of the library',
+  heatWindow: 'written in the last {weeks} weeks',
+  heatActive: 'active {active}/{days} days',
+  heatStreak: 'longest streak {days} days',
+  heatAverage: 'average {value} per day',
+  heatLess: 'less',
+  heatMore: 'more',
+  monthSuffix: '',
+  wdSun: 'Sun',
+  wdTue: 'Tue',
+  wdThu: 'Thu',
+  wdSat: 'Sat',
+  byType: 'By type · last 14 days',
+  byProject: 'By project · last 14 days',
+  rankingTitle: 'Projects (excluding {excluded} without dialogue)',
+  otherKey: 'other',
+  noData: 'Nothing recorded yet.',
+  compositionType: 'Composition · type',
+  compositionProject: 'Composition · project',
   save: 'Save',
   saving: 'Saving…',
   saved: 'Saved',
@@ -97,6 +161,70 @@ export const zh: Record<MessageKey, string> = {
   advancedTitle: '高级',
   toolFilter: '观察白名单',
   toolFilterHint: '仅在上方「观察工具调用并写入记忆」开启时生效；用逗号分隔，留空表示使用默认名单（{names}）。',
+  interfaceTitle: '界面',
+  sidebarEntry: '在左侧栏显示 claude-mem 入口',
+  sidebarEntryHint: '开启后左侧栏多一个入口，点开就是本页。仅对提供侧栏面板的 DSH 版本生效。',
+  tabOverview: '概览',
+  tabTrend: '分布与趋势',
+  tabSessions: '会话',
+  tabSettings: '设置',
+  overviewLoading: '正在读取 worker…',
+  overviewUnavailable: 'worker 没有响应，下面的数字不可用。',
+  overviewRetry: '重试',
+  overviewWorkerDown: 'worker 不可达',
+  ovQueue: '队列',
+  ovLastStore: '最近落库 {when}',
+  ovActiveSessions: '{count} 个活跃',
+  ovMcp: 'MCP {state}',
+  ovVector: '向量检索 {state}',
+  ovVectorOff: '未启用',
+  on: '已开',
+  off: '已关',
+  kpiObservations: '观察',
+  kpiSessions: '会话',
+  kpiSummaries: '摘要',
+  kpiDatabase: '数据库',
+  kpiDatabaseFoot: '自 {date}',
+  kpiActiveProjects: '活跃项目',
+  kpiProjectsFoot: '共 {total} 个，{excluded} 个无对话',
+  savingsTitle: '今日节省',
+  savingsLine: '{events} 次注入 · 注入 {read} tokens · 省下 {saved}（{percent}%）',
+  savingsFoot: '按 claude-mem 的口径：相对"从头重新发现这些记忆"的估算代价。',
+  recentTitle: '最近观察',
+  openViewer: '打开 viewer ↗',
+  trendPending: '聚合方案已定（优先直读 SQLite，失败退回分页遍历），随第二批一起实现；在那之前本页为空。',
+  injectionTitle: '最近一次注入 · {project}',
+  injectionSize: '{chars} 字符 · {lines} 行',
+  sortRecent: '最近活动',
+  sortItems: '按条数',
+  searchPlaceholder: '按标题搜索…',
+  sessionItems: '{count} 条观察',
+  sessionStarted: '开始于 {when}',
+  sessionsEmpty: '还没有任何会话产出摘要。',
+  timeJustNow: '刚刚',
+  timeMinutes: '{count} 分钟前',
+  timeHours: '{count} 小时前',
+  timeDays: '{count} 天前',
+  heatTitle: '近 {weeks} 周 · 每日写入',
+  heatRecent: '近 7 天 {count} 条 · 占全库 {percent}%',
+  heatWindow: '近 {weeks} 周写入',
+  heatActive: '活跃 {active}/{days} 天',
+  heatStreak: '最长连续 {days} 天',
+  heatAverage: '日均 {value} 条',
+  heatLess: '少',
+  heatMore: '多',
+  monthSuffix: '月',
+  wdSun: '日',
+  wdTue: '二',
+  wdThu: '四',
+  wdSat: '六',
+  byType: '按类型 · 近 14 天',
+  byProject: '按项目 · 近 14 天',
+  rankingTitle: '项目排行（已排除 {excluded} 个无对话项目）',
+  otherKey: '其他',
+  noData: '还没有记录。',
+  compositionType: '构成 · 按类型',
+  compositionProject: '构成 · 按项目',
   save: '保存',
   saving: '保存中…',
   saved: '已保存',
@@ -116,5 +244,33 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Copy rendered by the claude-mem configuration page. */
     'dsh-claude-mem': MessageKey
+  }
+}
+
+/** What the configuration page and the sidebar panel translate with. */
+export type Translate = (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string
+
+/** Dictionaries by language id; anything unknown falls back to English. */
+const DICTIONARIES: Readonly<Record<string, Record<MessageKey, string>>> = { en, zh }
+
+/**
+ * Build a translator for one language.
+ *
+ * The sidebar panel renders in the `main` seat, where the host hands it no `t`
+ * of its own, so it carries its own translator. `{name}` placeholders fill the
+ * same way the host fills them.
+ * @param language - a language id or tag, such as `zh`, `zh-CN` or `en`.
+ * @returns a translator, with English as the fallback.
+ */
+export function translateFor(language: string | undefined): Translate {
+  const id = String(language ?? '').trim().toLowerCase().split(/[-_]/)[0] ?? ''
+  const dictionary = (id.length > 0 ? DICTIONARIES[id] : undefined) ?? en
+  return (key, params) => {
+    const template = dictionary[key] ?? en[key]
+    if (params === undefined) return template
+    return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+      const value = params[name]
+      return value === undefined ? match : String(value)
+    })
   }
 }

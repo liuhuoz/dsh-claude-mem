@@ -14,6 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { HEALTH_BRIDGE_PATH, healthUrl } from './probe.js'
+import { buildOverview, OVERVIEW_BRIDGE_PATH, type Overview } from './overview.js'
 
 /** Probe deadline; longer than a healthy round trip, short enough to feel live. */
 const PROBE_TIMEOUT_MS = 4_000
@@ -80,10 +81,20 @@ async function probe(origin: string): Promise<ProbeOutcome> {
   }
 }
 
+/** How long one aggregated overview is reused before the next request refetches it. */
+const OVERVIEW_CACHE_MS = 45_000
+
+/** Last overview, keyed by the worker URL it was built against. */
+let overviewCache: { at: number; baseUrl: string; value: Overview } | undefined
+
 /**
- * Register the bridge once the host webserver is available. Optional injection:
- * without a webserver the plugin still works, the page just cannot probe.
+ * Register the overview bridge: one same-origin payload for the panel's data pages.
+ *
+ * The cache exists so a panel that remounts (tab switch, page reload) does not
+ * re-run ten worker calls; it is keyed by base URL so a settings change cannot
+ * serve numbers from the previous worker.
  * @param ctx - the plugin's host context.
+ * @param baseUrl - resolves the worker URL at request time.
  */
 export function registerHealthBridge(ctx: Context): void {
   ctx.inject(['webServer'], (sctx: Context) => {
@@ -99,6 +110,39 @@ export function registerHealthBridge(ctx: Context): void {
             return
           }
           writeJson(res, 200, await probe(origin))
+        },
+      }
+      const server = (sctx as unknown as { get(name: string): { register(route: WebRoute): () => void } }).get('webServer')
+      return server.register(route)
+    })
+  })
+}
+
+/**
+ * Register the overview route once the host webserver is available.
+ * @param ctx - the plugin's host context.
+ * @param baseUrl - resolves the worker URL at request time.
+ */
+export function registerOverviewBridge(ctx: Context, baseUrl: () => string): void {
+  ctx.inject(['webServer'], (sctx: Context) => {
+    sctx.effect(() => {
+      const route: WebRoute = {
+        kind: 'exact',
+        path: OVERVIEW_BRIDGE_PATH,
+        handler: async (_req, res) => {
+          const target = baseUrl()
+          const now = Date.now()
+          if (overviewCache !== undefined && overviewCache.baseUrl === target && now - overviewCache.at < OVERVIEW_CACHE_MS) {
+            writeJson(res, 200, overviewCache.value)
+            return
+          }
+          try {
+            const value = await buildOverview({ baseUrl: target, now })
+            overviewCache = { at: now, baseUrl: target, value }
+            writeJson(res, 200, value)
+          } catch {
+            writeJson(res, 500, { ok: false })
+          }
         },
       }
       const server = (sctx as unknown as { get(name: string): { register(route: WebRoute): () => void } }).get('webServer')
