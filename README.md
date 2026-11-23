@@ -35,6 +35,14 @@ dsh plugin --profile web add @liuhuoz/dsh-claude-mem
 dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 ```
 
+想跟随后续开发的 `dev` 分支（未发布的改动会先合到这里）：
+
+```sh
+dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem#dev
+```
+
+`dev` 用于集成尚未发布的改动，可能随时变动；要稳定版本请用上面的 npm 安装或跟随 `main`。
+
 `dsh` 不在 `PATH` 上时：
 
 ```sh

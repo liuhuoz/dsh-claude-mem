@@ -35,6 +35,14 @@ The same package can be installed straight from the repository, which tracks `ma
 dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 ```
 
+To follow the `dev` branch, where unreleased work lands first:
+
+```sh
+dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem#dev
+```
+
+`dev` integrates changes before they are released, so it may move at any time; use the npm install or `main` above for a stable version.
+
 If `dsh` is not on `PATH`:
 
 ```sh
