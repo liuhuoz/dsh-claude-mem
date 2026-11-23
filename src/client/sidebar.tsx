@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
-import { ClaudeMemPage } from './page.js'
+import { ClaudeMemTabs } from './panel.js'
 import { translateFor, type Translate } from './messages.js'
 
 /** Panel identity: the rail row's `id` and the `main` seat's `key` must agree. */
@@ -174,7 +174,7 @@ export function ClaudeMemPanel({ t, scope }: PanelProps): JSX.Element {
   return (
     <div style={PANEL_SHELL_STYLE}>
       <div style={PANEL_COLUMN_STYLE}>
-        <ClaudeMemPage t={translate} view="page" form={form} />
+        <ClaudeMemTabs t={translate} form={form} />
       </div>
     </div>
   )
