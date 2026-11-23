@@ -43,6 +43,9 @@ export const en = {
   advancedTitle: 'Advanced',
   toolFilter: 'Observed tools',
   toolFilterHint: 'Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list ({names}).',
+  interfaceTitle: 'Interface',
+  sidebarEntry: 'Show a claude-mem entry in the left sidebar',
+  sidebarEntryHint: 'Adds a row that opens this page. Only DSH versions that offer sidebar panels show it.',
   save: 'Save',
   saving: 'Saving…',
   saved: 'Saved',
@@ -97,6 +100,9 @@ export const zh: Record<MessageKey, string> = {
   advancedTitle: '高级',
   toolFilter: '观察白名单',
   toolFilterHint: '仅在上方「观察工具调用并写入记忆」开启时生效；用逗号分隔，留空表示使用默认名单（{names}）。',
+  interfaceTitle: '界面',
+  sidebarEntry: '在左侧栏显示 claude-mem 入口',
+  sidebarEntryHint: '开启后左侧栏多一个入口，点开就是本页。仅对提供侧栏面板的 DSH 版本生效。',
   save: '保存',
   saving: '保存中…',
   saved: '已保存',
@@ -116,5 +122,33 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Copy rendered by the claude-mem configuration page. */
     'dsh-claude-mem': MessageKey
+  }
+}
+
+/** What the configuration page and the sidebar panel translate with. */
+export type Translate = (key: MessageKey, params?: Readonly<Record<string, string | number>>) => string
+
+/** Dictionaries by language id; anything unknown falls back to English. */
+const DICTIONARIES: Readonly<Record<string, Record<MessageKey, string>>> = { en, zh }
+
+/**
+ * Build a translator for one language.
+ *
+ * The sidebar panel renders in the `main` seat, where the host hands it no `t`
+ * of its own, so it carries its own translator. `{name}` placeholders fill the
+ * same way the host fills them.
+ * @param language - a language id or tag, such as `zh`, `zh-CN` or `en`.
+ * @returns a translator, with English as the fallback.
+ */
+export function translateFor(language: string | undefined): Translate {
+  const id = String(language ?? '').trim().toLowerCase().split(/[-_]/)[0] ?? ''
+  const dictionary = (id.length > 0 ? DICTIONARIES[id] : undefined) ?? en
+  return (key, params) => {
+    const template = dictionary[key] ?? en[key]
+    if (params === undefined) return template
+    return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+      const value = params[name]
+      return value === undefined ? match : String(value)
+    })
   }
 }

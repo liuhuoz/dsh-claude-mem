@@ -29,6 +29,8 @@ export interface LiveSettings {
   readonly toolFilter: { readonly names: readonly string[] }
   readonly timeoutMs: number
   readonly dedupe: boolean
+  /** The left-sidebar entry switch; off until the user turns it on. */
+  readonly sidebarEntry: boolean
 }
 
 /** Defaults mirroring the schema; used when a host hands over an empty config. */
@@ -48,6 +50,7 @@ const DEFAULTS = {
   corpora: true,
   timeoutMs: 30_000,
   dedupe: true,
+  sidebarEntry: false,
 } as const
 
 export const DEFAULT_TOOL_NAMES: readonly string[] = ['read', 'write', 'edit', 'bash', 'pwsh', 'subagent', 'subagent_fork']
@@ -122,5 +125,6 @@ export function resolveSettings(raw: unknown): LiveSettings {
     toolFilter: { names: readToolNames(source.toolFilter) },
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),
+    sidebarEntry: readFlag(source.sidebarEntry, DEFAULTS.sidebarEntry),
   }
 }

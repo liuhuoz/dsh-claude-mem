@@ -77,6 +77,13 @@ describe('resolveSettings', () => {
     expect(resolveSettings({ toolFilter: { names: 'read' } }).toolFilter.names).toEqual(defaults)
     expect(resolveSettings({ toolFilter: null }).toolFilter.names).toEqual(defaults)
   })
+
+  it('keeps the sidebar entry off until the user turns it on', () => {
+    expect(resolveSettings({}).sidebarEntry).toBe(false)
+    expect(resolveSettings({ sidebarEntry: true }).sidebarEntry).toBe(true)
+    expect(resolveSettings({ sidebarEntry: cell(true) }).sidebarEntry).toBe(true)
+    expect(resolveSettings({ sidebarEntry: cell(false) }).sidebarEntry).toBe(false)
+  })
 })
 
 describe('Config schema', () => {
@@ -104,7 +111,7 @@ describe('Config schema', () => {
    * shipped as "unavailable".
    */
   it('marks every field the page edits as volatile', () => {
-    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextGate', 'fileContextTools', 'subagents']
+    const pageFields = ['baseUrl', 'hookPath', 'ingest', 'summarize', 'autoStartWorker', 'toolFilter', 'fileContext', 'fileContextGate', 'fileContextTools', 'subagents', 'sidebarEntry']
     for (const field of pageFields) {
       expect(nodeOf(field)?.meta?.volatile, `${field} must be volatile`).toBe(true)
     }

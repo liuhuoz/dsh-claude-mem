@@ -70,6 +70,7 @@ export const Config = Schema.object({
   baseUrl: Schema.string().default('').volatile(),
   timeoutMs: Schema.number().default(30_000),
   dedupe: Schema.boolean().default(true),
+  sidebarEntry: Schema.boolean().default(false).volatile(),
   platformSource: Schema.string().default(''),
   project: Schema.string().default(''),
   ingest: Schema.boolean().default(true).volatile(),

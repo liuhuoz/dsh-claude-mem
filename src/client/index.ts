@@ -11,6 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { ClaudeMemPage } from './page.js'
+import { registerSidebar } from './sidebar.js'
 import { en, zh } from './messages.js'
 
 export const name = 'dsh-claude-mem-client'
@@ -48,4 +49,8 @@ export function apply(ctx: Context): void {
     key: `${PACKAGE}#${ROW_ID}`,
     locale: LOCALE,
   }, ClaudeMemPage))
+
+  // The sidebar row is a convenience over the same page; a shell that cannot
+  // serve it, or a user who left the switch off, simply has no row.
+  ctx.effect(() => registerSidebar(ctx, { rowId: ROW_ID, locale }))
 }
