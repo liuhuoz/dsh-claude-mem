@@ -7,6 +7,8 @@
  * @module dsh-claude-mem/client/breakdown
  */
 
+import { useState } from 'react'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DayBucket, Distributions } from '../overview-types.js'
 import type { Translate } from './messages.js'
 
@@ -84,23 +86,52 @@ export function barHeight(bucket: DayBucket | undefined, max: number): number {
   return Math.round((bucket.total / max) * 100)
 }
 
+/** Edge length of a composition ring, in CSS pixels. */
+export const DONUT_SIZE = 74
+
+/** Stroke width of that ring. */
+export const DONUT_THICKNESS = 11
+
+/** One stroked arc of a composition ring, as dash geometry. */
+export interface DonutArc {
+  readonly key: string
+  readonly color: string
+  readonly dash: string
+  readonly offset: number
+}
+
 /**
- * Build the conic-gradient stops for a composition ring.
+ * Turn ranked counts into the stroked arcs of a composition ring.
+ *
+ * Each arc is a whole circle whose dash pattern covers its own share, which
+ * keeps a lone 100% segment a complete ring instead of a degenerate path.
  * @param entries - ranked counts.
  * @param colorOf - colour per key.
- * @returns a CSS conic-gradient value, or undefined when there is nothing to draw.
+ * @param size - ring edge length in pixels.
+ * @param thickness - stroke width in pixels.
+ * @returns one arc per entry, clockwise from twelve o'clock.
  */
-export function donutStops(entries: readonly KeyedCount[], colorOf: (key: string, index: number) => string): string | undefined {
+export function donutArcs(
+  entries: readonly KeyedCount[],
+  colorOf: (key: string, index: number) => string,
+  size: number = DONUT_SIZE,
+  thickness: number = DONUT_THICKNESS,
+): DonutArc[] {
   const total = entries.reduce((sum, entry) => sum + entry.count, 0)
-  if (total === 0) return undefined
+  if (total <= 0) return []
+  const circumference = Math.PI * (size - thickness)
   let cursor = 0
-  const stops = entries.map((entry, index) => {
-    const from = (cursor / total) * 360
-    cursor += entry.count
-    const to = (cursor / total) * 360
-    return colorOf(entry.key, index) + ' ' + from.toFixed(1) + 'deg ' + to.toFixed(1) + 'deg'
+  return entries.map((entry, index) => {
+    const length = (entry.count / total) * circumference
+    const arc = {
+      key: entry.key,
+      color: colorOf(entry.key, index),
+      dash: length.toFixed(2) + ' ' + Math.max(0, circumference - length).toFixed(2),
+      offset: -Number(cursor.toFixed(2)),
+    }
+    cursor += length
+    return arc
   })
-  return 'conic-gradient(' + stops.join(', ') + ')'
 }
 
 /**
@@ -126,6 +157,15 @@ export function projectColor(key: string, index: number): string {
   return PROJECT_COLORS[index % PROJECT_COLORS.length]
 }
 
+/** Hover text for one column: the day, its total, then its busiest splits. */
+function dayTip(day: string, bucket: DayBucket | undefined, dimension: 'type' | 'project', t: Translate): string {
+  const source = bucket === undefined ? {} : dimension === 'type' ? bucket.byType : bucket.byProject
+  const lines = [day, t('tipTotal', { count: bucket?.total ?? 0 })]
+  const head = Object.entries(source).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  for (const [key, count] of head) lines.push((key === OTHER_KEY ? t('otherKey') : key) + ' ' + count)
+  return lines.join('\n')
+}
+
 const styles = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 } as const,
   title: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -135,9 +175,10 @@ const styles = {
   axis: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--dsw-alias-label-tertiary)' } as const,
   legend: { display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
   swatch: { width: 8, height: 8, borderRadius: 2, display: 'inline-block', marginRight: 5 } as const,
-  ring: { width: 74, height: 74, borderRadius: '50%', position: 'relative', flex: 'none' } as const,
-  ringHole: { position: 'absolute', inset: 13, borderRadius: '50%', background: 'var(--dsw-alias-bg-layer-1)' } as const,
-  ringLabel: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--dsw-alias-label-primary)', zIndex: 1 } as const,
+  ring: { width: DONUT_SIZE, height: DONUT_SIZE, position: 'relative', flex: 'none' } as const,
+  // The label spans the ring to centre its number; it must not eat the pointer
+  // events the arcs underneath need for their bubbles and picks.
+  ringLabel: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--dsw-alias-label-primary)', zIndex: 1, pointerEvents: 'none' } as const,
   ringRow: { display: 'flex', gap: 12, alignItems: 'center' } as const,
   rankRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } as const,
   rankName: { width: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
@@ -164,19 +205,26 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4 }: {
   const named = topKeys(keys.map((key) => ({ key, count: 1 })), limit).map((entry) => entry.key)
   const max = days.reduce((peak, day) => Math.max(peak, byDay.get(day)?.total ?? 0), 0)
   const colorOf = dimension === 'type' ? (key: string) => typeColor(key) : (key: string, index: number) => projectColor(key, index)
+  const [hoverDay, setHoverDay] = useState<string | null>(null)
 
   return (
     <div style={styles.section}>
       <h4 style={styles.title}>{dimension === 'type' ? t('byType') : t('byProject')}</h4>
       <div style={styles.bars}>
         {days.map((day) => (
-          <div key={day} style={styles.bar}>
-            <div style={{ ...styles.stack, height: barHeight(byDay.get(day), max) + '%' }}>
-              {stackRatios(byDay.get(day), dimension, named).map((segment, index) => (
-                <i key={segment.key} style={{ display: 'block', width: '100%', height: segment.ratio * 100 + '%', background: colorOf(segment.key, index) }} />
-              ))}
+          <Tooltip key={day} label={dayTip(day, byDay.get(day), dimension, t)} side="top" portal delayMs={90}>
+            <div
+              style={hoverDay === day ? { ...styles.bar, background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: 3 } : styles.bar}
+              onPointerEnter={() => setHoverDay(day)}
+              onPointerLeave={() => setHoverDay(null)}
+            >
+              <div style={{ ...styles.stack, height: barHeight(byDay.get(day), max) + '%' }}>
+                {stackRatios(byDay.get(day), dimension, named).map((segment, index) => (
+                  <i key={segment.key} style={{ display: 'block', width: '100%', height: segment.ratio * 100 + '%', background: colorOf(segment.key, index) }} />
+                ))}
+              </div>
             </div>
-          </div>
+          </Tooltip>
         ))}
       </div>
       <div style={styles.axis}>
@@ -208,22 +256,66 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf }: {
   readonly colorOf: (key: string, index: number) => string
 }): JSX.Element {
   const folded = topKeys(entries, limit)
-  const gradient = donutStops(folded, colorOf)
+  const shown = folded.reduce((sum, entry) => sum + entry.count, 0)
+  const arcs = donutArcs(folded, colorOf)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   return (
     <div style={styles.section}>
       <h4 style={styles.title}>{title}</h4>
-      {gradient === undefined ? <span style={styles.empty}>{t('noData')}</span> : (
+      {arcs.length === 0 ? <span style={styles.empty}>{t('noData')}</span> : (
         <div style={styles.ringRow}>
-          <div style={{ ...styles.ring, background: gradient }}>
-            <span style={styles.ringHole} />
+          <div style={styles.ring}>
+            <svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={'0 0 ' + DONUT_SIZE + ' ' + DONUT_SIZE} style={{ display: 'block' }}>
+              {arcs.map((arc) => (
+                <Tooltip
+                  key={arc.key}
+                  side="top"
+                  portal
+                  delayMs={90}
+                  label={() => {
+                    const entry = folded.find((item) => item.key === arc.key)
+                    const name = arc.key === OTHER_KEY ? t('otherKey') : arc.key
+                    const share = shown > 0 ? Math.round(((entry?.count ?? 0) / shown) * 100) : 0
+                    return name + '\n' + (entry?.count ?? 0) + ' · ' + share + '%'
+                  }}
+                >
+                  <circle
+                    cx={DONUT_SIZE / 2}
+                    cy={DONUT_SIZE / 2}
+                    r={(DONUT_SIZE - DONUT_THICKNESS) / 2}
+                    fill="none"
+                    stroke={arc.color}
+                    strokeWidth={hoverKey === arc.key ? DONUT_THICKNESS + 2 : DONUT_THICKNESS}
+                    strokeDasharray={arc.dash}
+                    strokeDashoffset={arc.offset}
+                    transform={'rotate(-90 ' + DONUT_SIZE / 2 + ' ' + DONUT_SIZE / 2 + ')'}
+                    onPointerEnter={() => setHoverKey(arc.key)}
+                    onPointerLeave={() => setHoverKey(null)}
+                    style={{ cursor: 'pointer', transition: 'stroke-width 120ms var(--ds-ease-in-out, ease-out)' }}
+                  />
+                </Tooltip>
+              ))}
+            </svg>
             <span style={styles.ringLabel}>{folded.length}</span>
           </div>
           <div style={styles.legend}>
             {folded.map((entry, index) => (
-              <span key={entry.key} style={{ display: 'block' }}>
-                <i style={{ ...styles.swatch, background: colorOf(entry.key, index) }} />
-                {entry.key === OTHER_KEY ? t('otherKey') : entry.key} {entry.count}
-              </span>
+              <Tooltip
+                key={entry.key}
+                side="top"
+                portal
+                delayMs={90}
+                label={() => {
+                  const name = entry.key === OTHER_KEY ? t('otherKey') : entry.key
+                  const share = shown > 0 ? Math.round((entry.count / shown) * 100) : 0
+                  return name + '\n' + entry.count + ' · ' + share + '%'
+                }}
+              >
+                <span style={{ display: 'block' }}>
+                  <i style={{ ...styles.swatch, background: colorOf(entry.key, index) }} />
+                  {entry.key === OTHER_KEY ? t('otherKey') : entry.key} {entry.count}
+                </span>
+              </Tooltip>
             ))}
           </div>
         </div>
@@ -248,14 +340,22 @@ export function ProjectRanking({ projects, excluded, t }: {
       <h4 style={styles.title}>{t('rankingTitle', { excluded })}</h4>
       {projects.length === 0 ? <span style={styles.empty}>{t('noData')}</span> : null}
       {projects.map((project, index) => (
-        <div key={project.key} style={styles.rankRow}>
-          <span style={styles.rankName}>{project.key}</span>
-          <span style={styles.rankTrack}>
-            <i style={{ display: 'block', height: '100%', width: (peak > 0 ? (project.count / peak) * 100 : 0) + '%', background: projectColor(project.key, index) }} />
-          </span>
-          <span style={styles.rankCount}>{project.count}</span>
-          <span style={styles.rankWhen}>{project.lastWrite.slice(5)}</span>
-        </div>
+        <Tooltip
+          key={project.key}
+          side="top"
+          portal
+          delayMs={90}
+          label={() => project.key + '\n' + t('tipTotal', { count: project.count }) + '\n' + project.lastWrite.slice(0, 10)}
+        >
+          <div style={styles.rankRow}>
+            <span style={styles.rankName}>{project.key}</span>
+            <span style={styles.rankTrack}>
+              <i style={{ display: 'block', height: '100%', width: (peak > 0 ? (project.count / peak) * 100 : 0) + '%', background: projectColor(project.key, index) }} />
+            </span>
+            <span style={styles.rankCount}>{project.count}</span>
+            <span style={styles.rankWhen}>{project.lastWrite.slice(5)}</span>
+          </div>
+        </Tooltip>
       ))}
     </div>
   )

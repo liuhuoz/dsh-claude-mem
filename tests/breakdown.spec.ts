@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { barHeight, donutStops, lastDays, projectColor, stackRatios, topKeys, typeColor } from '../src/client/breakdown.js'
+import { describe, expect, it, vi } from 'vitest'
+
+// The chart components render their hover bubbles through the host's Tooltip
+// primitive; this spec covers the pure helpers, so the primitive is stubbed.
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ Tooltip: () => null }))
+
+import { barHeight, donutArcs, lastDays, projectColor, stackRatios, topKeys, typeColor } from '../src/client/breakdown.js'
 
 const day = (total: number, byType: Record<string, number>, byProject: Record<string, number>) => ({ day: '2026-11-23', total, byType, byProject })
 
@@ -38,14 +43,19 @@ describe('barHeight', () => {
   })
 })
 
-describe('donutStops', () => {
-  it('spans the circle in ranked order', () => {
-    const gradient = donutStops([{ key: 'a', count: 1 }, { key: 'b', count: 1 }], (key) => key)
-    expect(gradient).toBe('conic-gradient(a 0.0deg 180.0deg, b 180.0deg 360.0deg)')
+describe('donutArcs', () => {
+  it('splits the ring into proportional dashes, clockwise from the top', () => {
+    const arcs = donutArcs([{ key: 'a', count: 1 }, { key: 'b', count: 1 }], (key) => key)
+    const circumference = Math.PI * (74 - 11)
+    const half = (circumference / 2).toFixed(2)
+    expect(arcs).toHaveLength(2)
+    expect(arcs[0]).toMatchObject({ key: 'a', color: 'a', dash: half + ' ' + half })
+    expect(arcs[0].offset).toBeCloseTo(0)
+    expect(arcs[1].offset).toBeCloseTo(-circumference / 2)
   })
 
-  it('draws nothing when the total is zero', () => {
-    expect(donutStops([{ key: 'a', count: 0 }], (key) => key)).toBeUndefined()
+  it('draws nothing when there is nothing to draw', () => {
+    expect(donutArcs([{ key: 'a', count: 0 }], (key) => key)).toEqual([])
   })
 })
 
