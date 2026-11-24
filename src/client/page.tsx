@@ -89,6 +89,7 @@ const layout = {
   toggleText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 } as const,
   toggleTitle: { fontSize: 12.5, lineHeight: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
   /** The fold header of the advanced card, on the card's own title type. */
+  cardHeading: { margin: 0 } as const,
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', boxSizing: 'border-box', margin: 0, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' } as const,
   chevron: { fontSize: 10, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
   advancedBody: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
@@ -451,15 +452,17 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
       </section>
 
       <section style={layout.card}>
-        <button
-          type="button"
-          style={layout.cardHeader}
-          aria-expanded={advancedOpen}
-          onClick={() => setAdvancedOpen(current => !current)}
-        >
-          <span style={layout.title}>{t('advancedTitle')}</span>
-          <span style={layout.chevron} aria-hidden="true">{advancedOpen ? '▾' : '▸'}</span>
-        </button>
+        <h3 style={layout.cardHeading}>
+          <button
+            type="button"
+            style={layout.cardHeader}
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen(current => !current)}
+          >
+            <span style={layout.title}>{t('advancedTitle')}</span>
+            <span style={layout.chevron} aria-hidden="true">{advancedOpen ? '▾' : '▸'}</span>
+          </button>
+        </h3>
         {advancedOpen ? (
           <div style={layout.advancedBody}>
             <label style={layout.field}>
