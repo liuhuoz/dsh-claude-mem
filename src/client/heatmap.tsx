@@ -6,6 +6,7 @@
  * @module dsh-claude-mem/client/heatmap
  */
 
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DayBucket } from '../overview-types.js'
 import type { Translate } from './messages.js'
 
@@ -95,13 +96,23 @@ export function heatStats(days: readonly string[], counts: Readonly<Record<strin
   return { window, recent, activeDays, bestStreak, average: days.length === 0 ? 0 : window / days.length }
 }
 
-/** Intensity colours, weakest to strongest; empty cells keep the neutral background. */
-const LEVEL_COLORS = ['', '#1b3a63', '#245bb0', '#3b82f6', '#93c5fd'] as const
+/**
+ * Intensity fills, weakest to strongest: one hue at rising opacity, so the ramp
+ * reads the same way on a light card and a dark one. The empty day is a faint
+ * neutral rather than a theme colour, so a quiet grid still looks like a grid.
+ */
+const LEVEL_FILLS = [
+  'color-mix(in srgb, var(--dsw-alias-label-secondary) 16%, transparent)',
+  'color-mix(in srgb, var(--dsw-alias-state-business-primary) 28%, transparent)',
+  'color-mix(in srgb, var(--dsw-alias-state-business-primary) 50%, transparent)',
+  'color-mix(in srgb, var(--dsw-alias-state-business-primary) 72%, transparent)',
+  'color-mix(in srgb, var(--dsw-alias-state-business-primary) 92%, transparent)',
+] as const
 
 const styles = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 } as const,
   title: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
-  block: { display: 'flex', gap: 22, alignItems: 'flex-start', justifyContent: 'center' } as const,
+  block: { display: 'flex', gap: 20, alignItems: 'center', justifyContent: 'center' } as const,
   months: { position: 'relative', height: 13, paddingLeft: 20, marginBottom: 3 } as const,
   month: { position: 'absolute', top: 0, fontSize: 10, color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' } as const,
   grid: { display: 'flex', gap: 3 } as const,
@@ -109,9 +120,11 @@ const styles = {
   weekday: { width: 17, height: 14, lineHeight: '14px', fontSize: 9.5, textAlign: 'right', paddingRight: 3, color: 'var(--dsw-alias-label-tertiary)' } as const,
   column: { display: 'flex', flexDirection: 'column', gap: 3 } as const,
   cell: { width: 14, height: 14, borderRadius: 2, background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
-  summary: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', alignItems: 'flex-start', textAlign: 'left', paddingTop: 14 } as const,
+  summary: { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', textAlign: 'left' } as const,
+  summaryHead: { display: 'flex', alignItems: 'baseline', gap: 6 } as const,
   summaryValue: { fontSize: 19, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
-  summaryCaption: { fontSize: 10.5, color: 'var(--dsw-alias-label-tertiary)', marginTop: -4 } as const,
+  summaryCaption: { fontSize: 10.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
+  summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px 18px' } as const,
   legend: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--dsw-alias-label-tertiary)', marginTop: 6 } as const,
 } as const
 
@@ -168,14 +181,19 @@ export function Heatmap({ buckets, total, t, weeks = HEATMAP_WEEKS, now = new Da
               <div key={index} style={styles.column}>
                 {column.map((day) => {
                   const count = counts[day] ?? 0
-                  const level = heatLevel(count, max)
-                  const background = LEVEL_COLORS[level]
                   return (
-                    <i
+                    <Tooltip
                       key={day}
-                      title={day + ' · ' + count}
-                      style={background.length > 0 ? { ...styles.cell, background } : styles.cell}
-                    />
+                      label={day + '\n' + t('heatDay', { count })}
+                      side="top"
+                      portal
+                      delayMs={120}
+                    >
+                      <span
+                        aria-label={day + ' · ' + count}
+                        style={{ ...styles.cell, background: LEVEL_FILLS[heatLevel(count, max)] }}
+                      />
+                    </Tooltip>
                   )
                 })}
               </div>
@@ -183,19 +201,23 @@ export function Heatmap({ buckets, total, t, weeks = HEATMAP_WEEKS, now = new Da
           </div>
           <div style={styles.legend}>
             {t('heatLess')}
-            {[1, 2, 3, 4].map((level) => (
-              <i key={level} style={{ ...styles.cell, width: 11, height: 11, background: LEVEL_COLORS[level] }} />
+            {[0, 1, 2, 3, 4].map((level) => (
+              <i key={level} style={{ ...styles.cell, width: 11, height: 11, background: LEVEL_FILLS[level] }} />
             ))}
             {t('heatMore')}
           </div>
         </div>
         <div style={styles.summary}>
-          <span>{t('heatRecent', { count: stats.recent.toLocaleString(), percent: share })}</span>
-          <span style={styles.summaryValue}>{stats.window.toLocaleString()}</span>
-          <span style={styles.summaryCaption}>{t('heatWindow', { weeks })}</span>
-          <span>{t('heatActive', { active: stats.activeDays, days: days.length })}</span>
-          <span>{t('heatStreak', { days: stats.bestStreak })}</span>
-          <span>{t('heatAverage', { value: stats.average.toFixed(1) })}</span>
+          <div style={styles.summaryHead}>
+            <span style={styles.summaryValue}>{stats.window.toLocaleString()}</span>
+            <span style={styles.summaryCaption}>{t('heatWindow', { weeks })}</span>
+          </div>
+          <div style={styles.summaryGrid}>
+            <span>{t('heatRecent', { count: stats.recent.toLocaleString(), percent: share })}</span>
+            <span>{t('heatActive', { active: stats.activeDays, days: days.length })}</span>
+            <span>{t('heatStreak', { days: stats.bestStreak })}</span>
+            <span>{t('heatAverage', { value: stats.average.toFixed(1) })}</span>
+          </div>
         </div>
       </div>
     </div>

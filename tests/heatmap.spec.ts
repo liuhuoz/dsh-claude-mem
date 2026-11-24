@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// The module draws each cell through the host's Tooltip primitive, which only
+// exists in the browser bundle; this spec covers the pure helpers, so the
+// primitive is stubbed out and the module stays importable in node.
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ Tooltip: () => null }))
+
 import { heatLevel, heatStats, weekColumns } from '../src/client/heatmap.js'
 
 /** Wednesday, 2026-11-25, as the grid's end day. */
