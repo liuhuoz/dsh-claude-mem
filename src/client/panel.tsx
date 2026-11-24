@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { Overview } from '../overview-types.js'
+import { ClaudeMemIcon } from './icon.js'
 import { ClaudeMemPage } from './page.js'
 import { Heatmap } from './heatmap.js'
 import { CompositionRing, ProjectRanking, StackedBars, crossTotals, lastDays, projectColor, typeColor, windowTotals } from './breakdown.js'
@@ -34,6 +35,20 @@ const PAGE_GUTTER = 'max(clamp(16px, 4vw, 48px), calc((100% - 960px) / 2))' as c
 
 const styles = {
   root: { display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, minWidth: 0 } as const,
+  head: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    boxSizing: 'border-box',
+    paddingTop: 2,
+    paddingBottom: 2,
+    paddingLeft: PAGE_GUTTER,
+    paddingRight: PAGE_GUTTER,
+  } as const,
+  headTop: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 12px', minWidth: 0 } as const,
+  titleRow: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } as const,
+  title: { margin: 0, fontSize: 15, fontWeight: 600, lineHeight: '22px', whiteSpace: 'nowrap' } as const,
+  sub: { margin: 0, flex: 'auto', minWidth: 0, fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
   body: {
     flex: 1,
     minHeight: 0,
@@ -463,6 +478,15 @@ export function ClaudeMemTabs({ t, form }: { t: Translate; form?: ConfigPageForm
   const [tab, setTab] = useState<TabKey>('overview')
   return (
     <div style={styles.root}>
+      <header style={styles.head}>
+        <div style={styles.headTop}>
+          <div style={styles.titleRow}>
+            <ClaudeMemIcon size={18} />
+            <h2 style={styles.title}>{t('panelTitle')}</h2>
+            <p style={styles.sub}>{t('panelSubtitle')}</p>
+          </div>
+        </div>
+      </header>
       <nav style={styles.tabs}>
         {TABS.map((entry) => (
           <button key={entry.key} type="button" onClick={() => setTab(entry.key)} style={entry.key === tab ? { ...styles.tab, ...styles.tabOn } : styles.tab}>

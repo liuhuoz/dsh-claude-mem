@@ -10,14 +10,15 @@
  *
  * The page behind the row is the configuration page itself, driven through
  * `configForms` instead of the host-supplied form the row seat receives. The
- * glyph is Lucide's "brain" (ISC); the shell owns the row, its size and its
- * colours, this component draws only the glyph.
+ * glyph is Lucide's "brain" (ISC) from `icon.tsx`, shared with the panel's page
+ * header; the shell owns the row, its size and its colours.
  * @module dsh-claude-mem/client/sidebar
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import { ClaudeMemIcon } from './icon.js'
 import { ClaudeMemTabs } from './panel.js'
 import { translateFor, type Translate } from './messages.js'
 
@@ -29,47 +30,6 @@ const PANEL_LABEL = 'dsh-claude-mem'
 
 /** Rail position: the shipped panels occupy 20–50, so this lands after them. */
 const PANEL_ORDER = 60
-
-/** Edge length the shell asks its rows for. */
-const GLYPH_SIZE = 18
-
-/** Props the shell passes a rail glyph: its own edge length and selected state. */
-export interface PanelGlyphProps {
-  readonly size?: number
-  readonly active?: boolean
-}
-
-/**
- * The rail glyph: Lucide's "brain", drawn in `currentColor` so the shell's
- * selected and hover colours come through untouched.
- * @param props - the shell's glyph share.
- * @returns an 18×18 brain outline.
- */
-export function ClaudeMemIcon({ size = GLYPH_SIZE }: PanelGlyphProps): JSX.Element {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.9}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M12 18V5" />
-      <path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
-      <path d="M17.707 6.294A3 3 0 1 0 12 5a3 3 0 1 0-5.707 1.294" />
-      <path d="M17.996 5.125a4 4 0 0 1 2.526 5.77" />
-      <path d="M18 18a4 4 0 0 0 2-7.465" />
-      <path d="M19.967 17.482a4 4 0 1 1-7.967.517 4 4 0 1 1-7.967-.517" />
-      <path d="M6 18a4 4 0 0 1-2-7.465" />
-      <path d="M6.004 5.125a4 4 0 0 0-2.526 5.77" />
-    </svg>
-  )
-}
 
 /** One accepted configuration snapshot, as the settings host reports it. */
 export interface FormSnapshot {
