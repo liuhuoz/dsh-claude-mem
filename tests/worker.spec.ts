@@ -202,3 +202,53 @@ describe('WorkerClient.toolUses', () => {
     await expect(client.toolUses({ ids: [] })).rejects.toThrow(/at least one tool-use id/)
   })
 })
+
+describe('WorkerClient.ingestObservation', () => {
+  const base = { contentSessionId: 'session-1', toolName: 'Read', cwd: 'C:/work', platformSource: 'dsh' } as const
+
+  it('posts the direct-capture body and reports queued', async () => {
+    stubFetch({ status: 'queued' })
+    const client = new WorkerClient(limits)
+    const answer = await client.ingestObservation({
+      ...base,
+      toolInput: { file_path: 'a.ts' },
+      toolResponse: { content: [], is_error: false },
+      toolUseId: 'call-1',
+      agentId: 'child-1',
+      agentType: 'explore',
+      eventOccurredAtEpochMs: 5,
+    })
+    expect(answer).toBe('queued')
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+    expect(calls[0][0]).toBe('http://127.0.0.1:39999/api/sessions/observations')
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({
+      contentSessionId: 'session-1',
+      tool_name: 'Read',
+      cwd: 'C:/work',
+      platformSource: 'dsh',
+      tool_input: { file_path: 'a.ts' },
+      tool_response: { content: [], is_error: false },
+      tool_use_id: 'call-1',
+      agentId: 'child-1',
+      agentType: 'explore',
+      eventOccurredAtEpochMs: 5,
+    })
+  })
+
+  it('treats a skip as the worker answering, not as a failure', async () => {
+    stubFetch({ status: 'skipped', reason: 'tool_excluded' })
+    const client = new WorkerClient(limits)
+    await expect(client.ingestObservation(base)).resolves.toBe('skipped')
+  })
+
+  it('rejects when the worker refuses the event', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: async () => 'initializing',
+      json: async () => ({}),
+    }) as Response))
+    const client = new WorkerClient(limits)
+    await expect(client.ingestObservation(base)).rejects.toMatchObject({ code: 'MEM_PROVIDER_ERROR' })
+  })
+})

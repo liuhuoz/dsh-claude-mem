@@ -14,6 +14,7 @@ import type {
   MemDumbSearchResult,
   MemGetObservationsRequest,
   MemObservation,
+  MemObservationIngest,
   MemSaveRequest,
   MemSaveResult,
   MemSearchRequest,
@@ -116,17 +117,58 @@ export class WorkerClient {
     return await this.query('/api/timeline', query, signal)
   }
 
-  /** True when the worker already holds observations filed against one of these paths. */
-  async hasObservationsFor(paths: readonly string[], signal?: AbortSignal): Promise<boolean> {
-    if (paths.length === 0) return false
+  /**
+   * Observations the worker holds for any of these file paths, newest first.
+   *
+   * Paths go in every spelling the file could have been captured under; the
+   * worker's own query adds slash and `./` variants on top. `limit` defaults to
+   * the newest 15 rows, which is more than one injected block ever shows.
+   */
+  async byFile(
+    paths: readonly string[],
+    options: {
+      readonly limit?: number
+      readonly projects?: readonly string[]
+      readonly platformSource?: string
+    } = {},
+    signal?: AbortSignal,
+  ): Promise<readonly MemObservation[]> {
+    if (paths.length === 0) return []
     const query = new URLSearchParams()
     for (const path of paths) query.append('path', path)
-    query.set('limit', '1')
+    query.set('limit', String(options.limit ?? 15))
+    for (const project of options.projects ?? []) query.append('projects', project)
+    if (options.platformSource !== undefined) query.set('platformSource', options.platformSource)
     const raw: unknown = await this.requestJson<unknown>('/api/observations/by-file', { method: 'GET', query }, signal)
     const observations = raw !== null && typeof raw === 'object'
       ? (raw as { observations?: unknown }).observations
       : undefined
-    return Array.isArray(observations) && observations.length > 0
+    return Array.isArray(observations) ? observations.map(asObservation) : []
+  }
+
+  /**
+   * Hand one tool result to the worker's own capture pipeline.
+   *
+   * `queued` and `skipped` are both answers: a skip is claude-mem's own filter
+   * (memory-retrieval tools, the skip list, a deleted session), not a failure,
+   * so only a thrown request needs a fallback.
+   */
+  async ingestObservation(request: MemObservationIngest, signal?: AbortSignal): Promise<'queued' | 'skipped'> {
+    const body: Record<string, unknown> = {
+      contentSessionId: request.contentSessionId,
+      tool_name: request.toolName,
+      cwd: request.cwd,
+      platformSource: request.platformSource,
+    }
+    if (request.toolInput !== undefined) body.tool_input = request.toolInput
+    if (request.toolResponse !== undefined) body.tool_response = request.toolResponse
+    if (request.toolUseId !== undefined) body.tool_use_id = request.toolUseId
+    if (request.agentId !== undefined) body.agentId = request.agentId
+    if (request.agentType !== undefined) body.agentType = request.agentType
+    if (request.eventOccurredAtEpochMs !== undefined) body.eventOccurredAtEpochMs = request.eventOccurredAtEpochMs
+    const raw: unknown = await this.requestJson<unknown>('/api/sessions/observations', { method: 'POST', body }, signal)
+    const answer = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    return answer.status === 'skipped' ? 'skipped' : 'queued'
   }
 
   async getObservations(request: MemGetObservationsRequest, signal?: AbortSignal): Promise<MemSearchResult> {
