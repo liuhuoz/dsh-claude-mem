@@ -64,13 +64,16 @@ const styles = {
     paddingRight: PAGE_GUTTER,
   } as const,
   tabs: {
-    display: 'flex',
-    gap: 4,
-    borderBottom: '1px solid var(--dsw-alias-border-l2)',
-    paddingBottom: 6,
     paddingLeft: PAGE_GUTTER,
     paddingRight: PAGE_GUTTER,
     boxSizing: 'border-box',
+  } as const,
+  /** The rule rides the content column, so it stops at the same edges as the body. */
+  tabStrip: {
+    display: 'flex',
+    gap: 4,
+    paddingBottom: 6,
+    borderBottom: '1px solid var(--dsw-alias-border-l2)',
   } as const,
   tab: {
     border: 'none',
@@ -700,11 +703,13 @@ export function ClaudeMemTabs({ t, form }: { t: Translate; form?: ConfigPageForm
         </div>
       </header>
       <nav style={styles.tabs}>
-        {TABS.map((entry) => (
-          <button key={entry.key} type="button" onClick={() => setTab(entry.key)} style={entry.key === tab ? { ...styles.tab, ...styles.tabOn } : styles.tab}>
-            {entry.label(t)}
-          </button>
-        ))}
+        <div style={styles.tabStrip}>
+          {TABS.map((entry) => (
+            <button key={entry.key} type="button" onClick={() => setTab(entry.key)} style={entry.key === tab ? { ...styles.tab, ...styles.tabOn } : styles.tab}>
+              {entry.label(t)}
+            </button>
+          ))}
+        </div>
       </nav>
       <div style={styles.body}>
         {tab === 'overview' ? <OverviewTab t={t} /> : null}
