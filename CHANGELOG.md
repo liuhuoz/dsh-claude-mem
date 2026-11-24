@@ -2,6 +2,20 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## Unreleased
+
+### Added
+
+- A four-tab sidebar panel (Overview, Trend, Sessions, Settings) over one host payload, `GET /api/dsh-claude-mem/overview`: a twelve-week activity heatmap, type and project breakdowns, the session list, and the existing settings page behind an opt-in left-rail entry. The page cannot call the worker itself (its origin is refused), so the host gathers worker, database and SQLite-derived numbers once and the panel renders them.
+
+### Changed
+
+- The panel's overview route now admits requests through the host connection service, the same way the sibling host-route plugins do (`admit()`, or `requestRejection()` on hosts that predate it): a caller the app has not authenticated gets its rejection status instead of the memory payload. A host without a reachable connection service keeps the route open, so the panel still renders there. The health probe stays open on purpose — it only reports the worker's own health after the target is narrowed to loopback.
+
+### Fixed
+
+- The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` on a UTC clock and only rolls the file when it has something to record, while the aggregator demanded the local date; east of the meridian that dropped the numbers for the first hours of every local day. The day comparison is gone: the panel shows the day the file carries and names it under the line, so a quiet day keeps the last numbers instead of an empty line.
+
 ## 1.1.0
 
 ### Changed
@@ -13,11 +27,6 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 - File context no longer spawns the CLI either. A read asks `GET /api/observations/by-file` itself and renders, staleness-checks and dedupes the block here, so one read costs a millisecond-scale request instead of a 386–650 ms process start; the rendered block is byte-for-byte the one the CLI produced. `ops_bash` and `pwsh` are scanned conservatively for the files a read-only command names.
 - The read gate consults the same lookup and now requires the file to be unchanged since its newest observation, so a file edited after its notes is no longer denied a full read.
 - The file-context tool default shrinks to `read`. `grep` and `glob` no longer attach memory: upstream fed them a pattern-search branch that this change does not implement, so they are documented as unsupported rather than silently doing nothing.
-- The panel's overview route now admits requests through the host connection service, the same way the sibling host-route plugins do (`admit()`, or `requestRejection()` on hosts that predate it): a caller the app has not authenticated gets its rejection status instead of the memory payload. A host without a reachable connection service keeps the route open, so the panel still renders there. The health probe stays open on purpose — it only reports the worker's own health after the target is narrowed to loopback.
-
-### Fixed
-
-- The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` on a UTC clock and only rolls the file when it has something to record, while the aggregator demanded the local date; east of the meridian that dropped the numbers for the first hours of every local day. The day comparison is gone: the panel shows the day the file carries and names it under the line, so a quiet day keeps the last numbers instead of an empty line.
 
 ### Notes
 
