@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Button, DisclosureRow, Input, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { HEALTH_BRIDGE_PATH, parseHealth, readHealth } from '../probe.js'
@@ -54,15 +54,46 @@ type Probe =
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:37777'
 
+/**
+ * The card system the panel already renders with: the same surface, edge, radius
+ * and type scale, so the page that configures the panel reads as part of it
+ * rather than as a bare form standing next to it.
+ */
 const layout = {
-  root: { display: 'flex', flexDirection: 'column', gap: 18 },
-  section: { display: 'flex', flexDirection: 'column', gap: 8 },
-  status: { display: 'flex', alignItems: 'center', gap: 6 },
-  actions: { display: 'flex', alignItems: 'center', gap: 8 },
-  switchRow: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' },
-  hint: { opacity: 0.7, paddingLeft: 44, marginTop: -4 },
-  title: { margin: 0, fontSize: 13, fontWeight: 600 },
-  label: { display: 'block', marginBottom: 4 },
+  root: { display: 'flex', flexDirection: 'column', gap: 10 },
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    boxSizing: 'border-box',
+    padding: '11px 12px',
+    background: 'var(--dsw-alias-bg-layer-1)',
+    border: '1px solid var(--dsw-alias-border-l2)',
+    borderRadius: 10,
+  } as const,
+  title: {
+    margin: 0,
+    fontSize: 11.5,
+    fontWeight: 600,
+    letterSpacing: '.04em',
+    textTransform: 'uppercase',
+    color: 'var(--dsw-alias-label-secondary)',
+  } as const,
+  field: { display: 'flex', flexDirection: 'column', gap: 3 } as const,
+  label: { display: 'block', marginBottom: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
+  hint: { fontSize: 11, lineHeight: '16px', color: 'var(--dsw-alias-label-tertiary)' } as const,
+  status: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } as const,
+  actions: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } as const,
+  /** One setting: its words on the left, its switch anchored on the right. */
+  toggle: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 } as const,
+  toggleText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 } as const,
+  toggleTitle: { fontSize: 12.5, lineHeight: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
+  /** The fold header of the advanced card, on the card's own title type. */
+  cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', boxSizing: 'border-box', margin: 0, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' } as const,
+  chevron: { fontSize: 10, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
+  advancedBody: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
+  /** Pinned to the bottom edge of the scrollport, so a save is always in reach. */
+  saveBar: { position: 'sticky', bottom: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, boxSizing: 'border-box', padding: '8px 12px', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10 } as const,
 } as const
 
 function toolNamesOf(value: Record<string, unknown>): string[] {
@@ -254,9 +285,9 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
 
   return (
     <div style={layout.root}>
-      <section style={layout.section}>
+      <section style={layout.card}>
         <h3 style={layout.title}>{t('connectionTitle')}</h3>
-        <label>
+        <label style={layout.field}>
           <span style={layout.label}>{t('workerUrl')}</span>
           <Input
             value={draft.baseUrl}
@@ -264,7 +295,7 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
             disabled={!writable}
             onChange={event => update('baseUrl', event.target.value)}
           />
-          <span style={{ opacity: 0.7 }}>{t('workerUrlHint')}</span>
+          <span style={layout.hint}>{t('workerUrlHint')}</span>
         </label>
         <div style={layout.actions}>
           <Button size="sm" variant="outline" disabled={probe.kind === 'ongoing'} onClick={runProbe}>
@@ -279,161 +310,188 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
         </div>
       </section>
 
-      <section style={layout.section}>
+      <section style={layout.card}>
         <h3 style={layout.title}>{t('hookTitle')}</h3>
-        <label>
+        <label style={layout.field}>
           <span style={layout.label}>{t('hookPath')}</span>
           <Input
             value={draft.hookPath}
             disabled={!writable}
             onChange={event => update('hookPath', event.target.value)}
           />
-          <span style={{ opacity: 0.7 }}>{t('hookPathHint')}</span>
+          <span style={layout.hint}>{t('hookPathHint')}</span>
         </label>
-        <label style={layout.switchRow}>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('autoStartWorker')}</span>
+          </div>
           <Switch
             checked={draft.autoStartWorker}
             disabled={!writable}
             label={t('autoStartWorker')}
             onChange={next => update('autoStartWorker', next)}
           />
-          <span>{t('autoStartWorker')}</span>
-        </label>
+        </div>
       </section>
 
-      <section style={layout.section}>
+      <section style={layout.card}>
         <h3 style={layout.title}>{t('behaviorTitle')}</h3>
-        <label style={layout.switchRow}>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('ingest')}</span>
+            <span style={layout.hint}>{t('ingestHint')}</span>
+          </div>
           <Switch
             checked={draft.ingest}
             disabled={!writable}
             label={t('ingest')}
             onChange={next => update('ingest', next)}
           />
-          <span>{t('ingest')}</span>
-        </label>
-        <span style={layout.hint}>{t('ingestHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('summarize')}</span>
+            <span style={layout.hint}>{t('summarizeHint')}</span>
+          </div>
           <Switch
             checked={draft.summarize}
             disabled={!writable}
             label={t('summarize')}
             onChange={next => update('summarize', next)}
           />
-          <span>{t('summarize')}</span>
-        </label>
-        <span style={layout.hint}>{t('summarizeHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('workState')}</span>
+            <span style={layout.hint}>{t('workStateHint')}</span>
+          </div>
           <Switch
             checked={draft.workState}
             disabled={!writable}
             label={t('workState')}
             onChange={next => update('workState', next)}
           />
-          <span>{t('workState')}</span>
-        </label>
-        <span style={layout.hint}>{t('workStateHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('fileContext')}</span>
+            <span style={layout.hint}>{t('fileContextHint')}</span>
+          </div>
           <Switch
             checked={draft.fileContext}
             disabled={!writable}
             label={t('fileContext')}
             onChange={next => update('fileContext', next)}
           />
-          <span>{t('fileContext')}</span>
-        </label>
-        <span style={layout.hint}>{t('fileContextHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('fileContextGate')}</span>
+            <span style={layout.hint}>{t('fileContextGateHint')}</span>
+          </div>
           <Switch
             checked={draft.fileContextGate}
             disabled={!writable}
             label={t('fileContextGate')}
             onChange={next => update('fileContextGate', next)}
           />
-          <span>{t('fileContextGate')}</span>
-        </label>
-        <span style={layout.hint}>{t('fileContextGateHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('subagents')}</span>
+            <span style={layout.hint}>{t('subagentsHint')}</span>
+          </div>
           <Switch
             checked={draft.subagents}
             disabled={!writable}
             label={t('subagents')}
             onChange={next => update('subagents', next)}
           />
-          <span>{t('subagents')}</span>
-        </label>
-        <span style={layout.hint}>{t('subagentsHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('smart')}</span>
+            <span style={layout.hint}>{t('smartHint')}</span>
+          </div>
           <Switch
             checked={draft.smart}
             disabled={!writable}
             label={t('smart')}
             onChange={next => update('smart', next)}
           />
-          <span>{t('smart')}</span>
-        </label>
-        <span style={layout.hint}>{t('smartHint')}</span>
-        <label style={layout.switchRow}>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('corpora')}</span>
+            <span style={layout.hint}>{t('corporaHint')}</span>
+          </div>
           <Switch
             checked={draft.corpora}
             disabled={!writable}
             label={t('corpora')}
             onChange={next => update('corpora', next)}
           />
-          <span>{t('corpora')}</span>
-        </label>
-        <span style={layout.hint}>{t('corporaHint')}</span>
+        </div>
       </section>
 
-      <section style={layout.section}>
+      <section style={layout.card}>
         <h3 style={layout.title}>{t('interfaceTitle')}</h3>
-        <label style={layout.switchRow}>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('sidebarEntry')}</span>
+            <span style={layout.hint}>{t('sidebarEntryHint')}</span>
+          </div>
           <Switch
             checked={draft.sidebarEntry}
             disabled={!writable}
             label={t('sidebarEntry')}
             onChange={next => update('sidebarEntry', next)}
           />
-          <span>{t('sidebarEntry')}</span>
-        </label>
-        <span style={layout.hint}>{t('sidebarEntryHint')}</span>
+        </div>
       </section>
 
-      <DisclosureRow
-        icon={null}
-        title={t('advancedTitle')}
-        open={advancedOpen}
-        expandable
-        onToggle={() => setAdvancedOpen(current => !current)}
-      >
-        <label>
-          <span style={layout.label}>{t('toolFilter')}</span>
-          <Input
-            value={draft.toolNames}
-            disabled={!writable}
-            onChange={event => update('toolNames', event.target.value)}
-          />
-          <span style={{ opacity: 0.7 }}>{t('toolFilterHint', { names: DEFAULT_TOOL_NAMES.join(', ') })}</span>
-          <div style={{ opacity: 0.7 }}>{t('effectiveList', { names: effectiveNames(draft.toolNames, DEFAULT_TOOL_NAMES) })}</div>
-        </label>
-        <label>
-          <span style={layout.label}>{t('fileContextTools')}</span>
-          <Input
-            value={draft.fileContextTools}
-            disabled={!writable}
-            onChange={event => update('fileContextTools', event.target.value)}
-          />
-          <span style={{ opacity: 0.7 }}>{t('fileContextToolsHint', { names: DEFAULT_FILE_CONTEXT_TOOLS.join(', ') })}</span>
-          <div style={{ opacity: 0.7 }}>{t('effectiveList', { names: effectiveNames(draft.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS) })}</div>
-        </label>
-      </DisclosureRow>
+      <section style={layout.card}>
+        <button
+          type="button"
+          style={layout.cardHeader}
+          aria-expanded={advancedOpen}
+          onClick={() => setAdvancedOpen(current => !current)}
+        >
+          <span style={layout.title}>{t('advancedTitle')}</span>
+          <span style={layout.chevron} aria-hidden="true">{advancedOpen ? '▾' : '▸'}</span>
+        </button>
+        {advancedOpen ? (
+          <div style={layout.advancedBody}>
+            <label style={layout.field}>
+              <span style={layout.label}>{t('toolFilter')}</span>
+              <Input
+                value={draft.toolNames}
+                disabled={!writable}
+                onChange={event => update('toolNames', event.target.value)}
+              />
+              <span style={layout.hint}>{t('toolFilterHint', { names: DEFAULT_TOOL_NAMES.join(', ') })}</span>
+              <div style={layout.hint}>{t('effectiveList', { names: effectiveNames(draft.toolNames, DEFAULT_TOOL_NAMES) })}</div>
+            </label>
+            <label style={layout.field}>
+              <span style={layout.label}>{t('fileContextTools')}</span>
+              <Input
+                value={draft.fileContextTools}
+                disabled={!writable}
+                onChange={event => update('fileContextTools', event.target.value)}
+              />
+              <span style={layout.hint}>{t('fileContextToolsHint', { names: DEFAULT_FILE_CONTEXT_TOOLS.join(', ') })}</span>
+              <div style={layout.hint}>{t('effectiveList', { names: effectiveNames(draft.fileContextTools, DEFAULT_FILE_CONTEXT_TOOLS) })}</div>
+            </label>
+          </div>
+        ) : null}
+      </section>
 
-      <div style={layout.actions}>
+      <footer style={layout.saveBar}>
+        <span style={layout.hint}>{notice}</span>
         <Button variant="primary" size="sm" disabled={saving || !writable} onClick={save}>
           {saving ? t('saving') : t('save')}
         </Button>
-        {notice !== undefined ? <span style={{ opacity: 0.7 }}>{notice}</span> : null}
-      </div>
+      </footer>
     </div>
   )
 }
