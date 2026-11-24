@@ -109,24 +109,19 @@ interface SidebarSeat {
 
 /**
  * The page frame the shipped centre-column panels use: the panel owns its own
- * scroll, centres a readable column and keeps the shell's page margins
- * (28px top, 24–48px sides by viewport, 48px bottom). The row-configuration
- * seat renders the same page without this frame, because the Plugins page
- * already pads it.
+ * height and carries the shell's top margin (28px plus the desktop titlebar
+ * clearance). The side gutter and the scrolling body live in the panel itself,
+ * the same division the market panel uses. The row-configuration seat renders
+ * the same page without this frame, because the Plugins page already pads it.
  */
 const PANEL_SHELL_STYLE = {
   boxSizing: 'border-box',
   height: '100%',
   minHeight: 0,
-  overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'center',
-  padding: '28px clamp(24px, 4vw, 48px) 48px',
+  paddingTop: 'calc(28px + var(--dsh-frame-top-clearance, 0px))',
 } as const
-
-/** Content width for a settings page; the wsl panel uses the same bound. */
-const PANEL_COLUMN_STYLE = { width: '100%', maxWidth: '760px' } as const
 
 /** What the row's page receives through the `main` seat's inject callback. */
 interface PanelProps {
@@ -173,9 +168,7 @@ export function ClaudeMemPanel({ t, scope }: PanelProps): JSX.Element {
   const translate = t ?? translateFor('en')
   return (
     <div style={PANEL_SHELL_STYLE}>
-      <div style={PANEL_COLUMN_STYLE}>
-        <ClaudeMemTabs t={translate} form={form} />
-      </div>
+      <ClaudeMemTabs t={translate} form={form} />
     </div>
   )
 }

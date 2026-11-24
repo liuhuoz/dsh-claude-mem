@@ -29,9 +29,33 @@ const TABS: readonly { key: TabKey; label: (t: Translate) => string }[] = [
   { key: 'settings', label: (t) => t('tabSettings') },
 ]
 
+/** Page gutter: 16px at the narrowest, 48px on a wide frame, then a 960px reading column. */
+const PAGE_GUTTER = 'max(clamp(16px, 4vw, 48px), calc((100% - 960px) / 2))' as const
+
 const styles = {
-  root: { display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 } as const,
-  tabs: { display: 'flex', gap: 4, borderBottom: '1px solid var(--dsw-alias-border-l2)', paddingBottom: 6 } as const,
+  root: { display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, minWidth: 0 } as const,
+  body: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    paddingTop: 8,
+    paddingBottom: 48,
+    paddingLeft: PAGE_GUTTER,
+    paddingRight: PAGE_GUTTER,
+  } as const,
+  tabs: {
+    display: 'flex',
+    gap: 4,
+    borderBottom: '1px solid var(--dsw-alias-border-l2)',
+    paddingBottom: 6,
+    paddingLeft: PAGE_GUTTER,
+    paddingRight: PAGE_GUTTER,
+    boxSizing: 'border-box',
+  } as const,
   tab: {
     border: 'none',
     background: 'transparent',
@@ -45,13 +69,13 @@ const styles = {
   tabOn: { background: 'var(--dsw-alias-interactive-bg-active)', color: 'var(--dsw-alias-label-primary)' } as const,
   status: { display: 'flex', flexWrap: 'wrap', gap: '6px 14px', alignItems: 'center', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } as const,
   pill: { fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
-  kpis: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 9 } as const,
-  charts: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } as const,
+  kpis: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10 } as const,
+  charts: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } as const,
   card: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 2 } as const,
   kpiValue: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' } as const,
   kpiLabel: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
   kpiFoot: { fontSize: 10.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
-  section: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 8 } as const,
+  section: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 10 } as const,
   sectionTitle: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
   row: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '5px 0', borderTop: '1px solid var(--dsw-alias-border-l1)' } as const,
   rowTitle: { fontSize: 12.5, color: 'var(--dsw-alias-label-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
@@ -323,7 +347,7 @@ export function ClaudeMemTabs({ t, form }: { t: Translate; form?: ConfigPageForm
           </button>
         ))}
       </nav>
-      <div style={{ minHeight: 0 }}>
+      <div style={styles.body}>
         {tab === 'overview' ? <OverviewTab t={t} /> : null}
         {tab === 'trend' ? <TrendTab t={t} /> : null}
         {tab === 'sessions' ? <SessionsTab t={t} /> : null}
