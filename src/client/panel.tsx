@@ -8,7 +8,7 @@
  * @module dsh-claude-mem/client/panel
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
@@ -94,7 +94,17 @@ const styles = {
   kpiFoot: { fontSize: 10.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
   section: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 10 } as const,
   sectionTitle: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
-  row: { display: 'flex', gap: 8, alignItems: 'flex-start', padding: '5px 0', borderTop: '1px solid var(--dsw-alias-border-l1)' } as const,
+  // One grid for the whole recent list, so the tag column is as wide as the
+  // longest label and every title and project dot starts on the same edge.
+  recentList: { display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', columnGap: 8 } as const,
+  recentTagCell: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5px 0', borderTop: '1px solid var(--dsw-alias-border-l1)' } as const,
+  recentTextCell: { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, padding: '5px 0', borderTop: '1px solid var(--dsw-alias-border-l1)' } as const,
+  rowFirst: { borderTop: 'none' } as const,
+  // Reserve the slot a three-digit count needs, so the counts share one column
+  // and every session title truncates at the same edge, in any language.
+  sessionCount: { display: 'inline-grid', flex: 'none' } as const,
+  sessionCountGhost: { gridArea: '1 / 1', visibility: 'hidden' } as const,
+  sessionCountValue: { gridArea: '1 / 1', justifySelf: 'end' } as const,
   rowTitle: { fontSize: 12.5, color: 'var(--dsw-alias-label-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
   rowMeta: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } as const,
   tag: { flex: 'none', fontSize: 10, lineHeight: '16px', padding: '0 6px', borderRadius: 999, border: '1px solid var(--dsw-alias-border-l2)', color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -288,15 +298,19 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
 
       <div style={styles.section}>
         <h4 style={styles.sectionTitle}>{t('recentTitle')}</h4>
-        {(data.recent ?? []).map((item, index) => (
-          <div key={index} style={index === 0 ? { ...styles.row, borderTop: 'none' } : styles.row}>
-            <span style={tagStyle(item.type)}>{item.type}</span>
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-              <span style={styles.rowTitle}>{item.title}</span>
-              <span style={styles.rowMeta}><ProjectTag project={item.project} rank={projectRanks.get(item.project)} /> · {relative(Date.parse(item.createdAt), t)}</span>
-            </span>
-          </div>
-        ))}
+        <div style={styles.recentList}>
+          {(data.recent ?? []).map((item, index) => (
+            <Fragment key={index}>
+              <span style={{ ...styles.recentTagCell, ...(index === 0 ? styles.rowFirst : {}) }}>
+                <span style={{ ...tagStyle(item.type), boxSizing: 'border-box', width: '100%', textAlign: 'center' }}>{item.type}</span>
+              </span>
+              <span style={{ ...styles.recentTextCell, ...(index === 0 ? styles.rowFirst : {}) }}>
+                <span style={styles.rowTitle}>{item.title}</span>
+                <span style={styles.rowMeta}><ProjectTag project={item.project} rank={projectRanks.get(item.project)} /> · {relative(Date.parse(item.createdAt), t)}</span>
+              </span>
+            </Fragment>
+          ))}
+        </div>
         {data.recent === null ? <span style={styles.muted}>{t('overviewUnavailable')}</span> : null}
       </div>
 
@@ -536,7 +550,10 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
         <div key={index} style={styles.section}>
           <span style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
             <span style={styles.rowTitle}>{item.title}</span>
-            <span style={styles.kpiLabel}>{t('sessionItems', { count: item.itemCount })}</span>
+            <span style={{ ...styles.kpiLabel, ...styles.sessionCount }}>
+              <span aria-hidden="true" style={styles.sessionCountGhost}>{t('sessionItems', { count: 999 })}</span>
+              <span style={styles.sessionCountValue}>{t('sessionItems', { count: item.itemCount })}</span>
+            </span>
           </span>
           <span style={styles.rowMeta}><ProjectTag project={item.project} rank={projectRank.get(item.project)} /> · {t('sessionStarted', { when: relative(item.startedAt, t) })}</span>
         </div>
