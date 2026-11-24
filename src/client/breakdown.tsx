@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DayBucket, Distributions } from '../overview-types.js'
+import type { DayBucket, DistributionCell, Distributions } from '../overview-types.js'
 import type { Translate } from './messages.js'
 
 /** A keyed count, as produced by the overview payload. */
@@ -157,6 +157,76 @@ export function projectColor(key: string, index: number): string {
   return PROJECT_COLORS[index % PROJECT_COLORS.length]
 }
 
+/**
+ * Aggregate the days a window covers: total, per-type counts and per-project
+ * counts that keep the last day inside the window each project wrote on.
+ * @param buckets - every daily bucket the payload carries.
+ * @param days - the day keys the window covers, oldest first.
+ * @returns window totals, largest first.
+ */
+export function windowTotals(
+  buckets: readonly DayBucket[],
+  days: readonly string[],
+): { total: number; types: KeyedCount[]; projects: { key: string; count: number; lastWrite: string }[] } {
+  const wanted = new Set(days)
+  const types = new Map<string, number>()
+  const projects = new Map<string, { count: number; lastWrite: string }>()
+  let total = 0
+  for (const bucket of buckets) {
+    if (!wanted.has(bucket.day)) continue
+    total += bucket.total
+    for (const [key, count] of Object.entries(bucket.byType)) types.set(key, (types.get(key) ?? 0) + count)
+    for (const [key, count] of Object.entries(bucket.byProject)) {
+      const seen = projects.get(key)
+      projects.set(key, {
+        count: (seen?.count ?? 0) + count,
+        lastWrite: bucket.day > (seen?.lastWrite ?? '') ? bucket.day : (seen?.lastWrite ?? ''),
+      })
+    }
+  }
+  const byCount = (a: { count: number }, b: { count: number }): number => b.count - a.count
+  return {
+    total,
+    types: [...types].map(([key, count]) => ({ key, count })).sort(byCount),
+    projects: [...projects].map(([key, value]) => ({ key, count: value.count, lastWrite: value.lastWrite })).sort(byCount),
+  }
+}
+
+/**
+ * Totals for the window restricted to one key of `kind`, so a pick in one
+ * dimension can narrow the other one.
+ * @param cells - day × type × project cells from the payload.
+ * @param days - the day keys the window covers.
+ * @param kind - the dimension the picked key belongs to.
+ * @param key - the picked type or project.
+ * @returns the surviving types and projects, largest first.
+ */
+export function crossTotals(
+  cells: readonly DistributionCell[],
+  days: readonly string[],
+  kind: 'type' | 'project',
+  key: string,
+): { types: KeyedCount[]; projects: { key: string; count: number; lastWrite: string }[] } {
+  const wanted = new Set(days)
+  const types = new Map<string, number>()
+  const projects = new Map<string, { count: number; lastWrite: string }>()
+  for (const cell of cells) {
+    if (!wanted.has(cell.day)) continue
+    if ((kind === 'type' ? cell.type : cell.project) !== key) continue
+    types.set(cell.type, (types.get(cell.type) ?? 0) + cell.count)
+    const seen = projects.get(cell.project)
+    projects.set(cell.project, {
+      count: (seen?.count ?? 0) + cell.count,
+      lastWrite: cell.day > (seen?.lastWrite ?? '') ? cell.day : (seen?.lastWrite ?? ''),
+    })
+  }
+  const byCount = (a: { count: number }, b: { count: number }): number => b.count - a.count
+  return {
+    types: [...types].map(([type, count]) => ({ key: type, count })).sort(byCount),
+    projects: [...projects].map(([project, value]) => ({ key: project, count: value.count, lastWrite: value.lastWrite })).sort(byCount),
+  }
+}
+
 /** Hover text for one column: the day, its total, then its busiest splits. */
 function dayTip(day: string, bucket: DayBucket | undefined, dimension: 'type' | 'project', t: Translate): string {
   const source = bucket === undefined ? {} : dimension === 'type' ? bucket.byType : bucket.byProject
@@ -193,13 +263,15 @@ const styles = {
  * @param props - days to draw, their buckets, the split and the colour rule.
  * @returns one stacked column per day.
  */
-export function StackedBars({ days, buckets, dimension, keys, t, limit = 4 }: {
+export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, selectedKey = null, onPickKey }: {
   readonly days: readonly string[]
   readonly buckets: readonly DayBucket[]
   readonly dimension: 'type' | 'project'
   readonly keys: readonly string[]
   readonly t: Translate
   readonly limit?: number
+  readonly selectedKey?: string | null
+  readonly onPickKey?: (key: string) => void
 }): JSX.Element {
   const byDay = new Map(buckets.map((bucket) => [bucket.day, bucket]))
   const named = topKeys(keys.map((key) => ({ key, count: 1 })), limit).map((entry) => entry.key)
@@ -220,7 +292,18 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4 }: {
             >
               <div style={{ ...styles.stack, height: barHeight(byDay.get(day), max) + '%' }}>
                 {stackRatios(byDay.get(day), dimension, named).map((segment, index) => (
-                  <i key={segment.key} style={{ display: 'block', width: '100%', height: segment.ratio * 100 + '%', background: colorOf(segment.key, index) }} />
+                  <i
+                    key={segment.key}
+                    onClick={onPickKey === undefined ? undefined : () => onPickKey(segment.key)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      height: segment.ratio * 100 + '%',
+                      background: colorOf(segment.key, index),
+                      cursor: onPickKey === undefined ? 'default' : 'pointer',
+                      opacity: selectedKey !== null && segment.key !== selectedKey ? 0.25 : 1,
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -248,12 +331,14 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4 }: {
  * @param props - ranked counts, title and colour rule.
  * @returns the ring, or an empty note when there is nothing to draw.
  */
-export function CompositionRing({ entries, title, t, limit = 6, colorOf }: {
+export function CompositionRing({ entries, title, t, limit = 6, colorOf, selectedKey = null, onPickKey }: {
   readonly entries: readonly KeyedCount[]
   readonly title: string
   readonly t: Translate
   readonly limit?: number
   readonly colorOf: (key: string, index: number) => string
+  readonly selectedKey?: string | null
+  readonly onPickKey?: (key: string) => void
 }): JSX.Element {
   const folded = topKeys(entries, limit)
   const shown = folded.reduce((sum, entry) => sum + entry.count, 0)
@@ -289,9 +374,14 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf }: {
                     strokeDasharray={arc.dash}
                     strokeDashoffset={arc.offset}
                     transform={'rotate(-90 ' + DONUT_SIZE / 2 + ' ' + DONUT_SIZE / 2 + ')'}
+                    onClick={onPickKey === undefined || arc.key === OTHER_KEY ? undefined : () => onPickKey(arc.key)}
+                    strokeOpacity={selectedKey !== null && arc.key !== selectedKey ? 0.35 : 1}
                     onPointerEnter={() => setHoverKey(arc.key)}
                     onPointerLeave={() => setHoverKey(null)}
-                    style={{ cursor: 'pointer', transition: 'stroke-width 120ms var(--ds-ease-in-out, ease-out)' }}
+                    style={{
+                      cursor: onPickKey === undefined || arc.key === OTHER_KEY ? 'default' : 'pointer',
+                      transition: 'stroke-width 120ms var(--ds-ease-in-out, ease-out)',
+                    }}
                   />
                 </Tooltip>
               ))}
@@ -311,7 +401,14 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf }: {
                   return name + '\n' + entry.count + ' · ' + share + '%'
                 }}
               >
-                <span style={{ display: 'block' }}>
+                <span
+                  onClick={onPickKey === undefined || entry.key === OTHER_KEY ? undefined : () => onPickKey(entry.key)}
+                  style={{
+                    display: 'block',
+                    cursor: onPickKey === undefined || entry.key === OTHER_KEY ? 'default' : 'pointer',
+                    opacity: selectedKey !== null && entry.key !== selectedKey ? 0.35 : 1,
+                  }}
+                >
                   <i style={{ ...styles.swatch, background: colorOf(entry.key, index) }} />
                   {entry.key === OTHER_KEY ? t('otherKey') : entry.key} {entry.count}
                 </span>
@@ -329,10 +426,12 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf }: {
  * @param props - ranked projects and how many were excluded.
  * @returns one row per project.
  */
-export function ProjectRanking({ projects, excluded, t }: {
+export function ProjectRanking({ projects, excluded, t, selectedKey = null, onPickKey }: {
   readonly projects: Distributions['projects']
   readonly excluded: number
   readonly t: Translate
+  readonly selectedKey?: string | null
+  readonly onPickKey?: (key: string) => void
 }): JSX.Element {
   const peak = projects.reduce((max, project) => Math.max(max, project.count), 0)
   return (
@@ -347,7 +446,14 @@ export function ProjectRanking({ projects, excluded, t }: {
           delayMs={90}
           label={() => project.key + '\n' + t('tipTotal', { count: project.count }) + '\n' + project.lastWrite.slice(0, 10)}
         >
-          <div style={styles.rankRow}>
+          <div
+            onClick={onPickKey === undefined ? undefined : () => onPickKey(project.key)}
+            style={{
+              ...styles.rankRow,
+              cursor: onPickKey === undefined ? 'default' : 'pointer',
+              opacity: selectedKey !== null && project.key !== selectedKey ? 0.35 : 1,
+            }}
+          >
             <span style={styles.rankName}>{project.key}</span>
             <span style={styles.rankTrack}>
               <i style={{ display: 'block', height: '100%', width: (peak > 0 ? (project.count / peak) * 100 : 0) + '%', background: projectColor(project.key, index) }} />

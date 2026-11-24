@@ -133,12 +133,14 @@ const styles = {
  * @param props - buckets from the overview route, all-time total, translator and optional clock.
  * @returns the heatmap and its summary column.
  */
-export function Heatmap({ buckets, total, t, weeks = HEATMAP_WEEKS, now = new Date() }: {
+export function Heatmap({ buckets, total, t, weeks = HEATMAP_WEEKS, now = new Date(), selected = null, onSelect }: {
   readonly buckets: readonly DayBucket[]
   readonly total: number
   readonly t: Translate
   readonly weeks?: number
   readonly now?: Date
+  readonly selected?: string | null
+  readonly onSelect?: (day: string | null) => void
 }): JSX.Element {
   const counts: Record<string, number> = {}
   for (const bucket of buckets) counts[bucket.day] = bucket.total
@@ -191,7 +193,13 @@ export function Heatmap({ buckets, total, t, weeks = HEATMAP_WEEKS, now = new Da
                     >
                       <span
                         aria-label={day + ' · ' + count}
-                        style={{ ...styles.cell, background: LEVEL_FILLS[heatLevel(count, max)] }}
+                        onClick={onSelect === undefined ? undefined : () => onSelect(selected === day ? null : day)}
+                        style={{
+                          ...styles.cell,
+                          background: LEVEL_FILLS[heatLevel(count, max)],
+                          cursor: onSelect === undefined ? 'default' : 'pointer',
+                          boxShadow: selected === day ? '0 0 0 1.5px var(--dsw-alias-state-business-primary)' : undefined,
+                        }}
                       />
                     </Tooltip>
                   )

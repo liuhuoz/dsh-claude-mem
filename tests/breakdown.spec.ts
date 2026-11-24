@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 // primitive; this spec covers the pure helpers, so the primitive is stubbed.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ Tooltip: () => null }))
 
-import { barHeight, donutArcs, lastDays, projectColor, stackRatios, topKeys, typeColor } from '../src/client/breakdown.js'
+import { barHeight, crossTotals, donutArcs, lastDays, projectColor, stackRatios, topKeys, typeColor, windowTotals } from '../src/client/breakdown.js'
 
 const day = (total: number, byType: Record<string, number>, byProject: Record<string, number>) => ({ day: '2026-11-23', total, byType, byProject })
 
@@ -63,6 +63,50 @@ describe('lastDays', () => {
   it('ends today and walks back the requested window', () => {
     const days = lastDays(3, new Date(Date.UTC(2026, 10, 25, 12, 0, 0)))
     expect(days).toEqual(['2026-11-23', '2026-11-24', '2026-11-25'])
+  })
+})
+
+describe('windowTotals', () => {
+  const buckets = [
+    { day: '2026-11-01', total: 2, byType: { discovery: 1, feature: 1 }, byProject: { a: 2 } },
+    { day: '2026-11-02', total: 3, byType: { discovery: 3 }, byProject: { b: 1, a: 1 } },
+    { day: '2026-11-03', total: 1, byType: { bugfix: 1 }, byProject: { b: 1 } },
+  ]
+
+  it('sums only the days the window admits', () => {
+    const totals = windowTotals(buckets, ['2026-11-02', '2026-11-03'])
+    expect(totals.total).toBe(4)
+    expect(totals.types).toEqual([{ key: 'discovery', count: 3 }, { key: 'bugfix', count: 1 }])
+  })
+
+  it('keeps the last day a project wrote inside the window', () => {
+    const totals = windowTotals(buckets, ['2026-11-02', '2026-11-03'])
+    expect(totals.projects).toEqual([
+      { key: 'b', count: 2, lastWrite: '2026-11-03' },
+      { key: 'a', count: 1, lastWrite: '2026-11-02' },
+    ])
+  })
+})
+
+describe('crossTotals', () => {
+  const cells = [
+    { day: '2026-11-02', type: 'discovery', project: 'a', count: 3 },
+    { day: '2026-11-02', type: 'discovery', project: 'b', count: 1 },
+    { day: '2026-11-02', type: 'bugfix', project: 'b', count: 2 },
+    { day: '2026-11-01', type: 'discovery', project: 'c', count: 5 },
+  ]
+
+  it('narrows the other dimension to the picked type inside the window', () => {
+    const cross = crossTotals(cells, ['2026-11-02'], 'type', 'discovery')
+    expect(cross.projects).toEqual([
+      { key: 'a', count: 3, lastWrite: '2026-11-02' },
+      { key: 'b', count: 1, lastWrite: '2026-11-02' },
+    ])
+  })
+
+  it('narrows the types to the picked project', () => {
+    const cross = crossTotals(cells, ['2026-11-01', '2026-11-02'], 'project', 'b')
+    expect(cross.types).toEqual([{ key: 'bugfix', count: 2 }, { key: 'discovery', count: 1 }])
   })
 })
 

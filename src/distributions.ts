@@ -8,7 +8,7 @@
  * @module dsh-claude-mem/distributions
  */
 
-import type { DayBucket, Distributions } from './overview-types.js'
+import type { DayBucket, DistributionCell, Distributions } from './overview-types.js'
 
 /** How many days of daily buckets the tab draws. */
 export const DISTRIBUTION_DAYS = 84
@@ -128,6 +128,7 @@ export function foldDistributions(rows: readonly DistributionRow[], source: Dist
   const days = new Map<string, { total: number; byType: Map<string, number>; byProject: Map<string, number> }>()
   const types = new Map<string, number>()
   const projects = new Map<string, { count: number; lastWrite: string }>()
+  const cells = new Map<string, DistributionCell>()
   let total = 0
 
   for (const row of rows) {
@@ -143,6 +144,11 @@ export function foldDistributions(rows: readonly DistributionRow[], source: Dist
     bucket.byType.set(row.type, (bucket.byType.get(row.type) ?? 0) + row.count)
     bucket.byProject.set(row.project, (bucket.byProject.get(row.project) ?? 0) + row.count)
     days.set(row.day, bucket)
+
+    const cellKey = row.day + '\t' + row.type + '\t' + row.project
+    const cell = cells.get(cellKey)
+    if (cell === undefined) cells.set(cellKey, { day: row.day, type: row.type, project: row.project, count: row.count })
+    else cells.set(cellKey, { day: cell.day, type: cell.type, project: cell.project, count: cell.count + row.count })
   }
 
   const sortedDays: DayBucket[] = [...days.entries()]
@@ -162,6 +168,7 @@ export function foldDistributions(rows: readonly DistributionRow[], source: Dist
     projects: [...projects.entries()]
       .map(([key, value]) => ({ key, count: value.count, lastWrite: value.lastWrite }))
       .sort((a, b) => b.count - a.count),
+    cells: [...cells.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0)),
   }
 }
 

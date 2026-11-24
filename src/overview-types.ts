@@ -29,6 +29,14 @@ export interface DayBucket {
   readonly byProject: Readonly<Record<string, number>>
 }
 
+/** One day × type × project cell inside the day window, for cross-filtering. */
+export interface DistributionCell {
+  readonly day: string
+  readonly type: string
+  readonly project: string
+  readonly count: number
+}
+
 /** Daily buckets plus all-time type and project totals. */
 export interface Distributions {
   readonly source: 'sqlite' | 'api'
@@ -36,6 +44,8 @@ export interface Distributions {
   readonly days: readonly DayBucket[]
   readonly types: readonly { key: string; count: number }[]
   readonly projects: readonly { key: string; count: number; lastWrite: string }[]
+  /** Days × types × projects inside the day window, so a pick can narrow the other dimension. */
+  readonly cells: readonly DistributionCell[]
 }
 
 /** What the aggregator needs; injected so tests never touch the network. */

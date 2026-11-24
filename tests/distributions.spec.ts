@@ -40,6 +40,10 @@ describe('readDistributions', () => {
       { key: 'beta', count: 1, lastWrite: '2026-11-23' },
     ])
     expect(distributions?.days.map((day) => day.day)).toEqual(['2026-11-22', '2026-11-23'])
+    expect(distributions?.cells).toEqual([
+      { day: '2026-11-22', type: 'bugfix', project: 'alpha', count: 2 },
+      { day: '2026-11-23', type: 'discovery', project: 'beta', count: 1 },
+    ])
     expect(distributions?.days[1]).toMatchObject({ total: 1, byType: { discovery: 1 } })
   })
 

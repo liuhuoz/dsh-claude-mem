@@ -14,7 +14,7 @@ import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/c
 import type { Overview } from '../overview-types.js'
 import { ClaudeMemPage } from './page.js'
 import { Heatmap } from './heatmap.js'
-import { CompositionRing, ProjectRanking, StackedBars, lastDays, projectColor, typeColor } from './breakdown.js'
+import { CompositionRing, ProjectRanking, StackedBars, crossTotals, lastDays, projectColor, typeColor, windowTotals } from './breakdown.js'
 import type { Translate } from './messages.js'
 
 /** The bridge the host registers. */
@@ -86,6 +86,9 @@ const styles = {
   muted: { fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
   toolbar: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } as const,
   mono: { fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 54, overflow: 'hidden', color: 'var(--dsw-alias-label-secondary)' } as const,
+  detail: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 18px', fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } as const,
+  detailRow: { display: 'flex', gap: 8, justifyContent: 'space-between', borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 2 } as const,
+  detailCount: { color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' } as const,
 } as const
 
 /** Compact human duration, e.g. 9h 12m. */
@@ -223,9 +226,25 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
   )
 }
 
-/** The distribution tab: daily columns, twelve weeks of activity, composition and ranking. */
+/** Days the range switch offers; the heatmap keeps its own twelve weeks. */
+const RANGES = [7, 14, 30] as const
+
+/** One selected slice of the tab: a day, or a type/project inside its dimension. */
+interface TrendPick {
+  readonly kind: 'day' | 'type' | 'project'
+  readonly key: string
+}
+
+/**
+ * The distribution tab: daily columns, twelve weeks of activity, composition and
+ * ranking over the days the range switch admits. A click narrows the tab to one
+ * day (the heatmap) or one type/project (the bars, the rings, the ranking), and
+ * clicking the same slice again releases it.
+ */
 function TrendTab({ t }: { t: Translate }): JSX.Element {
   const [data, setData] = useState<Overview | undefined>(undefined)
+  const [range, setRange] = useState<number>(14)
+  const [pick, setPick] = useState<TrendPick | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -246,33 +265,137 @@ function TrendTab({ t }: { t: Translate }): JSX.Element {
   const distributions = data.distributions
   if (distributions === null) return <div style={styles.section}><span style={styles.muted}>{t('overviewUnavailable')}</span></div>
 
-  const days = lastDays(14)
-  const typeKeys = distributions.types.map((entry) => entry.key)
-  const projectKeys = distributions.projects.map((entry) => entry.key)
+  const days = lastDays(range)
+  const window = windowTotals(distributions.days, days)
+  const pickedKind = pick?.kind === 'type' || pick?.kind === 'project' ? pick.kind : null
+  // `cells` is new on this bridge, so a client reloaded against an older host still renders.
+  const cross = pickedKind === null || pick === null ? null : crossTotals(distributions.cells ?? [], days, pickedKind, pick.key)
+  const typeEntries = pick?.kind === 'project' ? (cross?.types ?? window.types) : window.types
+  const projectEntries = pick?.kind === 'type' ? (cross?.projects ?? window.projects) : window.projects
+  const forKind = (kind: TrendPick['kind']): string | null => (pick !== null && pick.kind === kind ? pick.key : null)
+  const toggle = (next: TrendPick): void => {
+    setPick(current => (current !== null && current.kind === next.kind && current.key === next.key ? null : next))
+  }
+  const pickedCount = pick === null || pick.kind === 'day'
+    ? 0
+    : (pick.kind === 'type' ? window.types : window.projects).find((entry) => entry.key === pick.key)?.count ?? 0
+  const pickedPercent = window.total > 0 ? Math.round((pickedCount / window.total) * 100) : 0
+  const dayBucket = pick !== null && pick.kind === 'day'
+    ? distributions.days.find((bucket) => bucket.day === pick.key)
+    : undefined
 
   return (
     <>
+      <div style={styles.toolbar}>
+        {RANGES.map((count) => (
+          <button
+            key={count}
+            type="button"
+            onClick={() => setRange(count)}
+            style={count === range ? { ...styles.tab, ...styles.tabOn } : styles.tab}
+          >
+            {t('rangeDays', { days: count })}
+          </button>
+        ))}
+        <span style={{ flex: 1 }} />
+        {pick !== null ? (
+          <Button size="sm" variant="outline" onClick={() => setPick(null)}>{t('clearSelection')}</Button>
+        ) : null}
+      </div>
+
+      {pick !== null ? (
+        <div style={styles.section}>
+          <span style={{ ...styles.rowTitle, fontSize: 12.5 }}>
+            {pick.key}
+            {' · '}
+            {t('tipTotal', { count: pick.kind === 'day' ? dayBucket?.total ?? 0 : pickedCount })}
+            {pick.kind === 'day' ? '' : ' · ' + t('pickedShare', { percent: pickedPercent })}
+          </span>
+          {dayBucket !== undefined ? (
+            <div style={styles.detail}>
+              {Object.entries(dayBucket.byType).sort((a, b) => b[1] - a[1]).map(([key, count]) => (
+                <span key={'type-' + key} style={styles.detailRow}>
+                  <span>{key}</span>
+                  <span style={styles.detailCount}>{count}</span>
+                </span>
+              ))}
+              {Object.entries(dayBucket.byProject).sort((a, b) => b[1] - a[1]).map(([key, count]) => (
+                <span key={'project-' + key} style={styles.detailRow}>
+                  <span>{key}</span>
+                  <span style={styles.detailCount}>{count}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div style={styles.charts}>
         <div style={styles.section}>
-          <StackedBars days={days} buckets={distributions.days} dimension="type" keys={typeKeys} t={t} />
+          <StackedBars
+            days={days}
+            buckets={distributions.days}
+            dimension="type"
+            keys={typeEntries.map((entry) => entry.key)}
+            t={t}
+            selectedKey={forKind('type')}
+            onPickKey={(key) => toggle({ kind: 'type', key })}
+          />
         </div>
         <div style={styles.section}>
-          <StackedBars days={days} buckets={distributions.days} dimension="project" keys={projectKeys} t={t} />
+          <StackedBars
+            days={days}
+            buckets={distributions.days}
+            dimension="project"
+            keys={projectEntries.map((entry) => entry.key)}
+            t={t}
+            selectedKey={forKind('project')}
+            onPickKey={(key) => toggle({ kind: 'project', key })}
+          />
         </div>
       </div>
+
       <div style={styles.section}>
-        <Heatmap buckets={distributions.days} total={distributions.total} t={t} />
+        <Heatmap
+          buckets={distributions.days}
+          total={distributions.total}
+          t={t}
+          selected={forKind('day')}
+          onSelect={(day) => { if (day === null) setPick(null); else toggle({ kind: 'day', key: day }) }}
+        />
       </div>
+
       <div style={styles.charts}>
         <div style={styles.section}>
-          <CompositionRing entries={distributions.types} title={t('compositionType')} t={t} colorOf={(key) => typeColor(key)} />
+          <CompositionRing
+            entries={typeEntries}
+            title={t('compositionType')}
+            t={t}
+            colorOf={(key) => typeColor(key)}
+            selectedKey={forKind('type')}
+            onPickKey={(key) => toggle({ kind: 'type', key })}
+          />
         </div>
         <div style={styles.section}>
-          <CompositionRing entries={distributions.projects} title={t('compositionProject')} t={t} colorOf={(key, index) => projectColor(key, index)} />
+          <CompositionRing
+            entries={projectEntries}
+            title={t('compositionProject')}
+            t={t}
+            colorOf={(key, index) => projectColor(key, index)}
+            selectedKey={forKind('project')}
+            onPickKey={(key) => toggle({ kind: 'project', key })}
+          />
         </div>
       </div>
+
       <div style={styles.section}>
-        <ProjectRanking projects={distributions.projects} excluded={data.projects?.excluded ?? 0} t={t} />
+        <ProjectRanking
+          projects={projectEntries}
+          excluded={data.projects?.excluded ?? 0}
+          t={t}
+          selectedKey={forKind('project')}
+          onPickKey={(key) => toggle({ kind: 'project', key })}
+        />
       </div>
     </>
   )
