@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 // primitive; this spec covers the pure helpers, so the primitive is stubbed.
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ Tooltip: () => null }))
 
-import { barHeight, crossTotals, donutArcs, lastDays, projectColor, stackRatios, topKeys, typeColor, windowTotals } from '../src/client/breakdown.js'
+import { axisScale, barHeight, crossTotals, donutArcs, lastDays, projectColor, stackRatios, tickIndexes, topKeys, typeColor, windowTotals } from '../src/client/breakdown.js'
 
 const day = (total: number, byType: Record<string, number>, byProject: Record<string, number>) => ({ day: '2026-11-23', total, byType, byProject })
 
@@ -116,5 +116,45 @@ describe('colours', () => {
     expect(typeColor('unknown-type')).toBe('#7c8698')
     expect(projectColor('x', 0)).toBe(projectColor('y', 0))
     expect(projectColor('x', 0)).not.toBe(projectColor('y', 1))
+  })
+})
+
+describe('axisScale', () => {
+  it('keeps the fixed 0/5/10 scale while the busiest day is ten or fewer', () => {
+    expect(axisScale(0)).toEqual({ max: 10, half: 5 })
+    expect(axisScale(3)).toEqual({ max: 10, half: 5 })
+    expect(axisScale(10)).toEqual({ max: 10, half: 5 })
+  })
+
+  it('rounds the top up to the next multiple of twenty above ten', () => {
+    expect(axisScale(11)).toEqual({ max: 20, half: 10 })
+    expect(axisScale(20)).toEqual({ max: 20, half: 10 })
+    expect(axisScale(21)).toEqual({ max: 40, half: 20 })
+    expect(axisScale(77)).toEqual({ max: 80, half: 40 })
+    expect(axisScale(100)).toEqual({ max: 100, half: 50 })
+    expect(axisScale(101)).toEqual({ max: 120, half: 60 })
+  })
+})
+
+describe('tickIndexes', () => {
+  it('labels both ends of a week plus its middle day', () => {
+    expect(tickIndexes(7)).toEqual([0, 3, 6])
+  })
+
+  it('adds two middle days across a fortnight', () => {
+    expect(tickIndexes(14)).toEqual([0, 4, 9, 13])
+  })
+
+  it('steps about five days over a month', () => {
+    expect(tickIndexes(30)).toEqual([0, 5, 10, 15, 19, 24, 29])
+  })
+
+  it('keeps the ends, never repeats an index and stays ascending', () => {
+    for (const length of [2, 3, 7, 8, 14, 15, 30, 31]) {
+      const indexes = tickIndexes(length)
+      expect(new Set(indexes).size).toBe(indexes.length)
+      expect(indexes[0]).toBe(0)
+      expect(indexes.at(-1)).toBe(length - 1)
+    }
   })
 })

@@ -89,6 +89,40 @@ export function barHeight(bucket: DayBucket | undefined, max: number): number {
   return Math.round((bucket.total / max) * 100)
 }
 
+/**
+ * The three-value scale the stacked bars are drawn against.
+ *
+ * A window whose busiest day is ten or fewer uses the fixed 0/5/10 scale. Above
+ * that the top rounds up to the next multiple of twenty, so the top, its half and
+ * the printed labels all stay round numbers.
+ * @param peak - the busiest single-day total in the window.
+ * @returns the top of the scale and its midpoint.
+ */
+export function axisScale(peak: number): { max: number; half: number } {
+  if (peak <= 10) return { max: 10, half: 5 }
+  const max = Math.ceil(peak / 20) * 20
+  return { max, half: max / 2 }
+}
+
+/**
+ * Which day columns carry a date label.
+ *
+ * A week gets its two ends and the middle day, a fortnight gets two middle days,
+ * and longer windows step about five days so the axis never reads as empty.
+ * @param length - how many day columns the chart draws.
+ * @returns column indexes, ascending, including both ends.
+ */
+export function tickIndexes(length: number): number[] {
+  if (length <= 1) return [0]
+  const step = length <= 7 ? 3 : length <= 14 ? 4 : 5
+  const segments = Math.max(1, Math.round((length - 1) / step))
+  const indexes = new Set<number>()
+  for (let segment = 0; segment <= segments; segment += 1) {
+    indexes.add(Math.round((segment * (length - 1)) / segments))
+  }
+  return [...indexes].sort((a, b) => a - b)
+}
+
 /** Edge length of a composition ring, in CSS pixels. */
 export const DONUT_SIZE = 74
 
@@ -247,10 +281,23 @@ function isDimmed(key: string, selectedKey: string | null, hoverKey: string | nu
 const styles = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 } as const,
   title: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
-  bars: { display: 'flex', alignItems: 'flex-end', gap: 4, height: 96, paddingTop: 4 } as const,
+  plot: { display: 'flex', gap: 6 } as const,
+  /** Value labels sit in this gutter, on the same 96px band as the columns. */
+  scale: { position: 'relative', width: 16, height: 96, flex: 'none', fontSize: 9.5, lineHeight: '10px', color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' } as const,
+  scaleTick: { position: 'absolute', right: 0, transform: 'translateY(-50%)' } as const,
+  plotArea: { position: 'relative', flex: 1, minWidth: 0, height: 96 } as const,
+  /** Weak dashed guides; they read behind the blocks, never over them. */
+  guide: { position: 'absolute', left: 0, right: 0, zIndex: 0, borderTop: '1px dashed var(--dsw-alias-border-l1)', pointerEvents: 'none' } as const,
+  /** Lifted above the guides so a full-height column still owns its top edge. */
+  bars: { display: 'flex', alignItems: 'flex-end', gap: 4, height: '100%', position: 'relative', zIndex: 1 } as const,
   bar: { flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' } as const,
   stack: { width: '100%', display: 'flex', flexDirection: 'column-reverse', borderRadius: 3, overflow: 'hidden', background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
-  axis: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--dsw-alias-label-tertiary)' } as const,
+  /** Same flex and gap as the columns, so each label centres on its own bar. */
+  axis: { display: 'flex', gap: 4, paddingLeft: 22, fontSize: 10, color: 'var(--dsw-alias-label-tertiary)' } as const,
+  axisTick: { flex: 1, minWidth: 0, position: 'relative' } as const,
+  axisLabel: { position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' } as const,
+  /** Anchored by its end at the column centre, so it reads up-right without covering the bars. */
+  axisLabelSlanted: { position: 'absolute', top: 2, right: '50%', transformOrigin: 'top right', transform: 'rotate(-45deg)', whiteSpace: 'nowrap' } as const,
   legend: { display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
   legendTitle: { flexBasis: '100%', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)', marginBottom: 2 } as const,
   swatch: { width: 8, height: 8, borderRadius: 2, display: 'inline-block', marginRight: 5 } as const,
@@ -284,7 +331,12 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, sele
 }): JSX.Element {
   const byDay = new Map(buckets.map((bucket) => [bucket.day, bucket]))
   const named = topKeys(keys.map((key) => ({ key, count: 1 })), limit).map((entry) => entry.key)
-  const max = days.reduce((peak, day) => Math.max(peak, byDay.get(day)?.total ?? 0), 0)
+  const peak = days.reduce((busiest, day) => Math.max(busiest, byDay.get(day)?.total ?? 0), 0)
+  const scale = axisScale(peak)
+  const ticks = tickIndexes(days.length)
+  // A month of columns leaves too little room for a flat label between them, so
+  // the axis leans its dates to 45° and gives them their own band instead.
+  const slanted = days.length > 14
   const colorOf = dimension === 'type' ? (key: string) => typeColor(key) : (key: string, index: number) => projectColor(key, index)
   const [hoverDay, setHoverDay] = useState<string | null>(null)
   const [hoverKey, setHoverKey] = useState<string | null>(null)
@@ -292,40 +344,56 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, sele
   return (
     <div style={styles.section}>
       <h4 style={styles.title}>{dimension === 'type' ? t('byType') : t('byProject')}</h4>
-      <div style={styles.bars}>
-        {days.map((day) => (
-          <Tooltip key={day} label={dayTip(day, byDay.get(day), dimension, t)} side="top" portal delayMs={90}>
-            <div
-              style={hoverDay === day ? { ...styles.bar, background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: 3 } : styles.bar}
-              onPointerEnter={() => setHoverDay(day)}
-              onPointerLeave={() => setHoverDay(null)}
-            >
-              <div style={{ ...styles.stack, height: barHeight(byDay.get(day), max) + '%' }}>
-                {stackRatios(byDay.get(day), dimension, named).map((segment, index) => (
-                  <i
-                    key={segment.key}
-                    onClick={onPickKey === undefined ? undefined : () => onPickKey(segment.key)}
-                    onPointerEnter={() => setHoverKey(segment.key)}
-                    onPointerLeave={() => setHoverKey(null)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      height: segment.ratio * 100 + '%',
-                      background: colorOf(segment.key, index),
-                      cursor: onPickKey === undefined ? 'default' : 'pointer',
-                      opacity: isDimmed(segment.key, selectedKey, hoverKey) ? 0.3 : 1,
-                      transition: 'opacity 120ms var(--ds-ease-in-out, ease-out)',
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </Tooltip>
-        ))}
+      <div style={styles.plot}>
+        <div style={styles.scale}>
+          <span style={{ ...styles.scaleTick, top: 0 }}>{scale.max}</span>
+          <span style={{ ...styles.scaleTick, top: '50%' }}>{scale.half}</span>
+          <span style={{ ...styles.scaleTick, top: '100%' }}>0</span>
+        </div>
+        <div style={styles.plotArea}>
+          <div style={{ ...styles.guide, top: 0 }} />
+          <div style={{ ...styles.guide, top: '50%' }} />
+          <div style={styles.bars}>
+            {days.map((day) => (
+              <Tooltip key={day} label={dayTip(day, byDay.get(day), dimension, t)} side="top" portal delayMs={90}>
+                <div
+                  style={hoverDay === day ? { ...styles.bar, background: 'var(--dsw-alias-interactive-bg-hover)', borderRadius: 3 } : styles.bar}
+                  onPointerEnter={() => setHoverDay(day)}
+                  onPointerLeave={() => setHoverDay(null)}
+                >
+                  <div style={{ ...styles.stack, height: barHeight(byDay.get(day), scale.max) + '%' }}>
+                    {stackRatios(byDay.get(day), dimension, named).map((segment, index) => (
+                      <i
+                        key={segment.key}
+                        onClick={onPickKey === undefined ? undefined : () => onPickKey(segment.key)}
+                        onPointerEnter={() => setHoverKey(segment.key)}
+                        onPointerLeave={() => setHoverKey(null)}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          height: segment.ratio * 100 + '%',
+                          background: colorOf(segment.key, index),
+                          cursor: onPickKey === undefined ? 'default' : 'pointer',
+                          opacity: isDimmed(segment.key, selectedKey, hoverKey) ? 0.3 : 1,
+                          transition: 'opacity 120ms var(--ds-ease-in-out, ease-out)',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
       </div>
-      <div style={styles.axis}>
-        <span>{days[0]?.slice(5) ?? ''}</span>
-        <span>{days.at(-1)?.slice(5) ?? ''}</span>
+      <div style={{ ...styles.axis, height: slanted ? 30 : 16 }}>
+        {days.map((day, index) => (
+          <span key={day} style={styles.axisTick}>
+            {ticks.includes(index) ? (
+              <span style={slanted ? styles.axisLabelSlanted : styles.axisLabel}>{day.slice(5)}</span>
+            ) : null}
+          </span>
+        ))}
       </div>
       <div style={styles.legend}>
         {named.map((key, index) => (
