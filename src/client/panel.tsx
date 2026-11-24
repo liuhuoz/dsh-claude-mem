@@ -98,6 +98,9 @@ const styles = {
   rowTitle: { fontSize: 12.5, color: 'var(--dsw-alias-label-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
   rowMeta: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } as const,
   tag: { flex: 'none', fontSize: 10, lineHeight: '16px', padding: '0 6px', borderRadius: 999, border: '1px solid var(--dsw-alias-border-l2)', color: 'var(--dsw-alias-label-secondary)' } as const,
+  projectTag: { display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, maxWidth: '100%', verticalAlign: 'middle' } as const,
+  projectDot: { width: 6, height: 6, borderRadius: '50%', flex: 'none', display: 'block' } as const,
+  projectName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
   links: { display: 'flex', gap: 12, fontSize: 12 } as const,
   link: { color: 'var(--dsw-alias-state-business-primary)', textDecoration: 'none', borderBottom: '1px dashed currentColor', cursor: 'pointer' } as const,
   muted: { fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
@@ -144,23 +147,26 @@ function tagStyle(type: string): CSSProperties {
 }
 
 /**
- * The project pill: the rank colour the distribution tab hands that project.
- * A project the charts do not rank (no distribution payload, or a project the
- * worker excluded) keeps the neutral tone instead of borrowing someone
- * else's hue. Project keys can be long, so the pill clips rather than grows.
+ * A project name carrying the colour the distribution tab gives that project,
+ * as a dot rather than a pill. The filled pill is the type badge's shape, and
+ * both palettes use the same six hues: on a metadata line a filled project
+ * chip competed with the title and read as a second category of equal weight.
+ * The dot keeps the colour — the match with that project's bar and ring
+ * segment — while shape, size and position keep it metadata.
+ *
+ * A project the charts do not rank (no distribution payload, or one the worker
+ * excluded) keeps the neutral tone instead of borrowing a neighbour's hue.
  * @param project - the project key, as the overview payload reports it.
  * @param rank - that project's index in the ranked list, when it has one.
- * @returns the pill style for that project.
+ * @returns the dot and the name.
  */
-function projectStyle(project: string, rank: number | undefined): CSSProperties {
-  return pillStyle(rank === undefined ? NEUTRAL_COLOR : projectColor(project, rank), {
-    display: 'inline-block',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    verticalAlign: 'middle',
-  })
+function ProjectTag({ project, rank }: { project: string; rank: number | undefined }): JSX.Element {
+  return (
+    <span style={styles.projectTag}>
+      <i style={{ ...styles.projectDot, background: rank === undefined ? NEUTRAL_COLOR : projectColor(project, rank) }} />
+      <span style={styles.projectName}>{project}</span>
+    </span>
+  )
 }
 
 /** Compact human duration, e.g. 9h 12m. */
@@ -241,6 +247,10 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
   const projects = data.projects
   const savings = data.savings
   const up = worker !== null
+  // Project dots borrow the rank colours the distribution tab gives each
+  // project; a project it does not rank keeps the neutral tone.
+  const projectRanks = new Map<string, number>()
+  for (const [index, entry] of (data.distributions?.projects ?? []).entries()) projectRanks.set(entry.key, index)
 
   return (
     <>
@@ -283,7 +293,7 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
             <span style={tagStyle(item.type)}>{item.type}</span>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
               <span style={styles.rowTitle}>{item.title}</span>
-              <span style={styles.rowMeta}>{item.project} · {relative(Date.parse(item.createdAt), t)}</span>
+              <span style={styles.rowMeta}><ProjectTag project={item.project} rank={projectRanks.get(item.project)} /> · {relative(Date.parse(item.createdAt), t)}</span>
             </span>
           </div>
         ))}
@@ -528,10 +538,7 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
             <span style={styles.rowTitle}>{item.title}</span>
             <span style={styles.kpiLabel}>{t('sessionItems', { count: item.itemCount })}</span>
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <span style={projectStyle(item.project, projectRank.get(item.project))}>{item.project}</span>
-            <span style={styles.rowMeta}>{t('sessionStarted', { when: relative(item.startedAt, t) })}</span>
-          </span>
+          <span style={styles.rowMeta}><ProjectTag project={item.project} rank={projectRank.get(item.project)} /> · {t('sessionStarted', { when: relative(item.startedAt, t) })}</span>
         </div>
       ))}
       {data !== undefined && sessions.length === 0 ? <span style={styles.muted}>{t('sessionsEmpty')}</span> : null}
