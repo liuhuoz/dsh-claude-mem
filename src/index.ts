@@ -5,8 +5,9 @@
  * dependencies), installable from a git clone via `dsh plugin add`.
  *
  * Platform scoping is a SIGNAL, never an enforced restriction: `platformSource`
- * defaults to unset (unfiltered), and `ingest`/`summarize` default to off so a
- * plain mount is read-only against existing memory.
+ * defaults to unset (unfiltered). Both capture stages (`ingest`, `summarize`)
+ * default to on, matching claude-mem's own behaviour, so a plain mount records
+ * from the first turn.
  * @module dsh-claude-mem
  */
 
