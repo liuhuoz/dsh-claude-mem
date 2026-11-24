@@ -27,7 +27,7 @@ export interface ClaudeMemPageProps {
 }
 
 /** Editable projection of the accepted configuration. */
-interface Draft {
+export interface Draft {
   baseUrl: string
   hookPath: string
   ingest: boolean
@@ -109,7 +109,7 @@ function fileContextToolsOf(value: Record<string, unknown>): string[] {
   return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
 }
 
-function toDraft(value: Record<string, unknown> | undefined): Draft {
+export function toDraft(value: Record<string, unknown> | undefined): Draft {
   const source = value ?? {}
   return {
     baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : '',
@@ -136,7 +136,7 @@ function textOp(field: string, value: string): SettingsPathOpView {
 }
 
 /** Turn the draft into the atomic operation set a save submits. */
-function toOperations(draft: Draft): SettingsPathOpView[] {
+export function toOperations(draft: Draft): SettingsPathOpView[] {
   const names = draft.toolNames.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
   const contextNames = draft.fileContextTools.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
   return [
@@ -157,7 +157,7 @@ function toOperations(draft: Draft): SettingsPathOpView[] {
   ]
 }
 
-function effectiveNames(value: string, fallback: readonly string[]): string {
+export function effectiveNames(value: string, fallback: readonly string[]): string {
   const names = value.split(/[,\s]+/).map(name => name.trim()).filter(name => name.length > 0)
   return (names.length > 0 ? names : fallback).join(', ')
 }
