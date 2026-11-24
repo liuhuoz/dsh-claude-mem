@@ -87,6 +87,7 @@ const styles = {
   pill: { fontSize: 11, padding: '1px 7px', borderRadius: 999, background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
   kpis: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10 } as const,
   charts: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } as const,
+  split: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10, alignItems: 'stretch' } as const,
   card: { background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10, padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: 2 } as const,
   kpiValue: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' } as const,
   kpiLabel: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -426,31 +427,29 @@ function TrendTab({ t }: { t: Translate }): JSX.Element {
         </div>
       </div>
 
-      <div style={styles.section}>
-        <Heatmap
-          buckets={distributions.days}
-          total={distributions.total}
-          t={t}
-          selected={forKind('day')}
-          onSelect={(day) => { if (day === null) setPick(null); else toggle({ kind: 'day', key: day }) }}
-        />
-      </div>
-
-      <div style={styles.charts}>
-        <div style={styles.section}>
+      <div style={styles.split}>
+        <div style={{ ...styles.section, justifyContent: 'center' }}>
+          <Heatmap
+            buckets={distributions.days}
+            total={distributions.total}
+            t={t}
+            selected={forKind('day')}
+            onSelect={(day) => { if (day === null) setPick(null); else toggle({ kind: 'day', key: day }) }}
+          />
+        </div>
+        <div style={{ ...styles.section, justifyContent: 'center' }}>
+          <h4 style={styles.sectionTitle}>{t('compositionTitle')}</h4>
           <CompositionRing
             entries={typeEntries}
-            title={t('compositionType')}
+            caption={t('byType')}
             t={t}
             colorOf={(key) => typeColor(key)}
             selectedKey={forKind('type')}
             onPickKey={(key) => toggle({ kind: 'type', key })}
           />
-        </div>
-        <div style={styles.section}>
           <CompositionRing
             entries={projectEntries}
-            title={t('compositionProject')}
+            caption={t('byProject')}
             t={t}
             colorOf={(key, index) => projectColor(key, index)}
             selectedKey={forKind('project')}

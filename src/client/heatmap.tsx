@@ -112,7 +112,7 @@ const LEVEL_FILLS = [
 const styles = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 } as const,
   title: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
-  block: { display: 'flex', gap: 20, alignItems: 'center', justifyContent: 'center' } as const,
+  block: { display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' } as const,
   months: { position: 'relative', height: 13, paddingLeft: 20, marginBottom: 3 } as const,
   month: { position: 'absolute', top: 0, fontSize: 10, color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap' } as const,
   grid: { display: 'flex', gap: 3 } as const,
@@ -120,7 +120,7 @@ const styles = {
   weekday: { width: 17, height: 14, lineHeight: '14px', fontSize: 9.5, textAlign: 'right', paddingRight: 3, color: 'var(--dsw-alias-label-tertiary)' } as const,
   column: { display: 'flex', flexDirection: 'column', gap: 3 } as const,
   cell: { width: 14, height: 14, borderRadius: 2, background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
-  summary: { display: 'flex', flexDirection: 'column', gap: 8, minWidth: 240, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', textAlign: 'left' } as const,
+  summary: { display: 'flex', flexDirection: 'column', gap: 8, flex: '1 1 190px', minWidth: 0, fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)', textAlign: 'left' } as const,
   summaryHead: { display: 'flex', alignItems: 'baseline', gap: 6 } as const,
   summaryValue: { fontSize: 19, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
   summaryCaption: { fontSize: 10.5, color: 'var(--dsw-alias-label-tertiary)' } as const,

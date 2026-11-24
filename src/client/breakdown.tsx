@@ -247,6 +247,7 @@ const styles = {
   stack: { width: '100%', display: 'flex', flexDirection: 'column-reverse', borderRadius: 3, overflow: 'hidden', background: 'var(--dsw-alias-interactive-bg-hover)' } as const,
   axis: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--dsw-alias-label-tertiary)' } as const,
   legend: { display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 11, color: 'var(--dsw-alias-label-secondary)' } as const,
+  legendTitle: { flexBasis: '100%', fontSize: 11, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)', marginBottom: 2 } as const,
   swatch: { width: 8, height: 8, borderRadius: 2, display: 'inline-block', marginRight: 5 } as const,
   ring: { width: DONUT_SIZE, height: DONUT_SIZE, position: 'relative', flex: 'none' } as const,
   // The label spans the ring to centre its number; it must not eat the pointer
@@ -330,13 +331,13 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, sele
 }
 
 /**
- * One composition ring with its legend.
- * @param props - ranked counts, title and colour rule.
+ * One composition ring with its legend; the caption heads that legend.
+ * @param props - ranked counts, legend caption and colour rule.
  * @returns the ring, or an empty note when there is nothing to draw.
  */
-export function CompositionRing({ entries, title, t, limit = 6, colorOf, selectedKey = null, onPickKey }: {
+export function CompositionRing({ entries, caption, t, limit = 6, colorOf, selectedKey = null, onPickKey }: {
   readonly entries: readonly KeyedCount[]
-  readonly title: string
+  readonly caption: string
   readonly t: Translate
   readonly limit?: number
   readonly colorOf: (key: string, index: number) => string
@@ -349,8 +350,12 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf, selecte
   const [hoverKey, setHoverKey] = useState<string | null>(null)
   return (
     <div style={styles.section}>
-      <h4 style={styles.title}>{title}</h4>
-      {arcs.length === 0 ? <span style={styles.empty}>{t('noData')}</span> : (
+      {arcs.length === 0 ? (
+        <div style={styles.section}>
+          <span style={styles.legendTitle}>{caption}</span>
+          <span style={styles.empty}>{t('noData')}</span>
+        </div>
+      ) : (
         <div style={styles.ringRow}>
           <div style={styles.ring}>
             <svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={'0 0 ' + DONUT_SIZE + ' ' + DONUT_SIZE} style={{ display: 'block' }}>
@@ -392,6 +397,7 @@ export function CompositionRing({ entries, title, t, limit = 6, colorOf, selecte
             <span style={styles.ringLabel}>{folded.length}</span>
           </div>
           <div style={styles.legend}>
+            <span style={styles.legendTitle}>{caption}</span>
             {folded.map((entry, index) => (
               <Tooltip
                 key={entry.key}
