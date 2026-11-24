@@ -26,7 +26,7 @@
   },
   "homepage": "https://github.com/liuhuoz/dsh-claude-mem#readme",
   "engines": {
-    "dsh": ">=0.2.1",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0",
     "node": ">=20.12.0"
   },
   "type": "module",
