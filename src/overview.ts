@@ -17,7 +17,7 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { Overview, OverviewOptions } from './overview-types.js'
+import type { InjectionSection, Overview, OverviewOptions } from './overview-types.js'
 import { readDistributions } from './distributions.js'
 
 export type { Overview, OverviewOptions }
@@ -30,6 +30,70 @@ type Settled<T> = { ok: true; value: T } | { ok: false }
 
 
 const DEFAULT_TIMEOUT_MS = 4_000
+
+/**
+ * Split claude-mem's recent-context block into its memory and its summaries.
+ *
+ * The block opens with a markdown title and a "Showing last N session(s) for …"
+ * line, which describe the block instead of carrying memory; both are dropped,
+ * so the text starts at the first `**Summary (Prompt #N)**` heading, and each
+ * summary is split out for the sessions tab's per-entry rows.
+ * @param body - the block text, ANSI already stripped.
+ * @returns the memory text and one entry per summary it carries.
+ */
+export function splitContextBlock(body: string): { text: string; sections: InjectionSection[] } {
+  const lines = body.split('\n')
+  let start = 0
+  while (start < lines.length) {
+    const line = lines[start].trim()
+    const label = line.length === 0 || line.startsWith('#') || line === '---' || /^Showing last \d+ session/i.test(line)
+    if (!label) break
+    start += 1
+  }
+  const text = lines.slice(start).join('\n').trim()
+  const sections: InjectionSection[] = []
+  let prompt: string | undefined
+  let held: string[] = []
+  const flush = (): void => {
+    if (prompt === undefined) return
+    const fields: { label: string; value: string }[] = []
+    for (const line of held) {
+      const trimmed = line.trim()
+      if (trimmed.length === 0) continue
+      // The block separates summaries with a horizontal rule; it is markup, not
+      // the tail of whichever field the line happens to follow.
+      if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) continue
+      const match = /^\*\*([^*]+):\*\*\s*(.*)$/.exec(trimmed)
+      if (match === null) {
+        const last = fields[fields.length - 1]
+        if (last === undefined) continue
+        fields[fields.length - 1] = { label: last.label, value: (last.value + '\n' + trimmed).trim() }
+        continue
+      }
+      fields.push({ label: (match[1] ?? '').trim(), value: (match[2] ?? '').trim() })
+    }
+    const stamped = (fields.find((field) => /^date$/i.test(field.label))?.value ?? '').trim().split('\n')[0]?.trim() ?? ''
+    const kept = fields.filter((field) => !/^date$/i.test(field.label))
+    const request = kept.find((field) => /^request$/i.test(field.label))?.value ?? ''
+    const parsed = stamped.length > 0 ? Date.parse(stamped.replace(/\//g, '-')) : Number.NaN
+    sections.push({ prompt: 'Prompt #' + prompt, date: stamped, at: Number.isNaN(parsed) ? 0 : parsed, request, fields: kept })
+  }
+  for (const line of text.split('\n')) {
+    const match = /^\*\*Summary \(Prompt #(\d+)\)\*\*$/.exec(line.trim())
+    if (match === null) {
+      if (prompt !== undefined) held.push(line)
+      continue
+    }
+    flush()
+    prompt = match[1] ?? ''
+    held = []
+  }
+  flush()
+  // The block lists its summaries out of order, so the newest is found by the
+  // stamp it carries; entries without one keep their block order last.
+  sections.sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1))
+  return { text, sections }
+}
 
 /** One JSON GET that never throws. */
 async function getJson(options: OverviewOptions, endpoint: string): Promise<Settled<unknown>> {
@@ -218,11 +282,14 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
       return typeof entry?.text === 'string' ? [entry.text] : []
     }).join('\n').replace(/\u001B\[[0-9;]*m/g, '').trim()
     if (body.length > 0) {
+      const { text: memory, sections } = splitContextBlock(body)
       injectionOut = {
         project: newest.project,
+        at: (sections[0]?.at ?? 0) > 0 ? sections[0]?.at ?? newest.startedAt : newest.startedAt,
         chars: body.length,
         lines: body.split('\n').length,
-        head: body.slice(0, 240),
+        text: memory,
+        sections,
       }
     }
   }

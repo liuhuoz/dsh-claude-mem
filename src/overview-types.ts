@@ -5,6 +5,40 @@
  * @module dsh-claude-mem/overview-types
  */
 
+/** One labelled field of a session summary, e.g. "Request". */
+export interface InjectionField {
+  /** The label claude-mem writes, e.g. "Next Steps". */
+  readonly label: string
+  readonly value: string
+}
+
+/** One session summary inside claude-mem's recent-context block. */
+export interface InjectionSection {
+  /** Heading the block gives it, e.g. "Prompt #19". */
+  readonly prompt: string
+  /** The block's own timestamp for this summary, e.g. "2026/11/24 18:54:11". */
+  readonly date: string
+  /** That timestamp as epoch milliseconds; 0 when the block had none. */
+  readonly at: number
+  /** Its request text, used as the card's headline. */
+  readonly request: string
+  /** Every labelled field the summary carries, in block order. */
+  readonly fields: readonly InjectionField[]
+}
+
+/** What a project's recent-context block carries, for the sessions tab. */
+export interface InjectionView {
+  readonly project: string
+  /** Start of the newest session this block summarises, in epoch milliseconds. */
+  readonly at: number
+  /** Size of the whole block, its label lines included. */
+  readonly chars: number
+  readonly lines: number
+  /** The block's memory, with the title and "Showing …" line removed. */
+  readonly text: string
+  readonly sections: readonly InjectionSection[]
+}
+
 /** The payload the panel renders. Fields are null when their source failed. */
 export interface Overview {
   readonly worker: { version?: string; port?: number; uptimeSeconds?: number; activeSessions?: number } | null
@@ -15,7 +49,7 @@ export interface Overview {
   readonly projects: { total: number; active: number; excluded: number } | null
   readonly recent: readonly { type: string; title: string; project: string; createdAt: string }[] | null
   readonly sessions: readonly { title: string; project: string; itemCount: number; startedAt: number }[] | null
-  readonly injection: { project: string; chars: number; lines: number; head: string } | null
+  readonly injection: InjectionView | null
   readonly savings: { day: string; events: number; readTokens: number; savedTokens: number; percent: number } | null
   readonly distributions: Distributions | null
   readonly fetchedAt: number

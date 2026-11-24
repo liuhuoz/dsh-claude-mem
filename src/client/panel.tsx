@@ -10,7 +10,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, DisclosureRow, Input, MarkdownText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { Overview } from '../overview-types.js'
 import { ClaudeMemIcon } from './icon.js'
@@ -115,7 +115,18 @@ const styles = {
   link: { color: 'var(--dsw-alias-state-business-primary)', textDecoration: 'none', borderBottom: '1px dashed currentColor', cursor: 'pointer' } as const,
   muted: { fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
   toolbar: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } as const,
-  mono: { fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 54, overflow: 'hidden', color: 'var(--dsw-alias-label-secondary)' } as const,
+  injectionHead: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } as const,
+  eyebrow: { fontSize: 10, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-tertiary)' } as const,
+  injectionHeadline: { margin: 0, fontSize: 13.5, lineHeight: 1.45, fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } as const,
+  fieldBlock: { display: 'flex', flexDirection: 'column', gap: 4 } as const,
+  fieldLabel: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--dsw-alias-label-secondary)' } as const,
+  fieldBody: { paddingLeft: 18, color: 'var(--dsw-alias-label-primary)', fontSize: 12 } as const,
+  allSections: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
+
+  injectionBody: { maxHeight: 200, overflowY: 'auto', borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 8 } as const,
+  injectionActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12 } as const,
+
+
   detail: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 18px', fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } as const,
   detailRow: { display: 'flex', gap: 8, justifyContent: 'space-between', borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 2 } as const,
   detailCount: { color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' } as const,
@@ -495,11 +506,59 @@ function TrendTab({ t }: { t: Translate }): JSX.Element {
   )
 }
 
+/** Localized names for the field labels claude-mem's block writes. */
+const FIELD_COPY: Readonly<Record<string, 'fieldRequest' | 'fieldCompleted' | 'fieldLearned' | 'fieldNextSteps' | 'fieldNotes'>> = {
+  request: 'fieldRequest',
+  completed: 'fieldCompleted',
+  learned: 'fieldLearned',
+  'next steps': 'fieldNextSteps',
+  notes: 'fieldNotes',
+}
+
+/**
+ * A field's mark, so a row reads like the viewer's sections: a message for the
+ * request, a check for what was done, a bulb for what was learned, an arrow for
+ * what follows.
+ * @param props.label - the field's raw label.
+ * @returns a 13px outline glyph.
+ */
+function FieldGlyph({ label }: { readonly label: string }): JSX.Element {
+  const key = label.toLowerCase()
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ flex: 'none' }}>
+      {key === 'completed' ? <path d="M20 6 9 17l-5-5" />
+        : key === 'learned' ? <><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z" /></>
+          : key === 'next steps' ? <path d="M4 12h13M13 6l6 6-6 6" />
+            : key === 'notes' ? <><circle cx="12" cy="12" r="9" /><path d="M12 16v-5M12 8h.01" /></>
+              : <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />}
+    </svg>
+  )
+}
+
 /** The sessions tab: latest injection plus the sessions that produced summaries. */
 function SessionsTab({ t }: { t: Translate }): JSX.Element {
   const [data, setData] = useState<Overview | undefined>(undefined)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'recent' | 'items'>('recent')
+  const [bySection, setBySection] = useState(false)
+  const [field, setField] = useState<string | null>(null)
+  // A fresh bucket per render would discard the markdown render cache.
+  const markdownLabels = useMemo(() => ({ code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('footnotes') }), [t])
+  // The block's shape is new on this bridge: a client reloaded against an older
+  // host still renders, with no preview and no per-summary rows.
+  const injection = data?.injection ?? null
+  const injectionText = injection?.text ?? ''
+  const injectionSections = (injection?.sections ?? []).map((section) => ({ ...section, fields: section.fields ?? [] }))
+  const newest = injectionSections[0]
+  const activeField = newest === undefined
+    ? undefined
+    : (newest.fields.find((item) => item.label === field)
+      ?? newest.fields.find((item) => /^next steps$/i.test(item.label))
+      ?? newest.fields[newest.fields.length - 1])
+  const fieldLabel = (label: string): string => {
+    const key = FIELD_COPY[label.toLowerCase()]
+    return key === undefined ? label : t(key)
+  }
 
   useEffect(() => {
     let alive = true
@@ -531,11 +590,74 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
 
   return (
     <>
-      {data?.injection !== null && data?.injection !== undefined ? (
+      {injection !== null ? (
         <div style={styles.section}>
-          <h4 style={styles.sectionTitle}>{t('injectionTitle', { project: data.injection.project })}</h4>
-          <span style={{ fontSize: 12.5 }}>{t('injectionSize', { chars: data.injection.chars.toLocaleString(), lines: data.injection.lines })}</span>
-          <span style={styles.mono}>{data.injection.head}</span>
+          <div style={styles.injectionHead}>
+            <span style={styles.eyebrow}>{t('injectionEyebrow')}</span>
+            <span style={styles.rowMeta}>{injection.project}</span>
+            <span style={{ flex: 1 }} />
+            <span style={styles.rowMeta}>
+              {newest !== undefined && newest.date.length > 0 ? newest.date : relative(injection.at, t)}
+            </span>
+          </div>
+          {newest !== undefined ? (
+            <>
+              <h3 style={styles.injectionHeadline}>{newest.request.length > 0 ? newest.request : newest.prompt}</h3>
+              {activeField !== undefined ? (
+                <div style={styles.fieldBlock}>
+                  <span style={styles.fieldLabel}>
+                    <FieldGlyph label={activeField.label} />
+                    {fieldLabel(activeField.label)}
+                  </span>
+                  <div style={styles.fieldBody}>
+                    <MarkdownText text={activeField.value} variant="compact" labels={markdownLabels} />
+                  </div>
+                </div>
+              ) : null}
+              {newest.fields.length > 0 ? (
+                <div style={styles.injectionActions}>
+                  {newest.fields.map((item) => (
+                    <Button
+                      key={item.label}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setField(item.label)}
+                      style={item.label === activeField?.label ? { fontWeight: 600 } : undefined}
+                    >
+                      {fieldLabel(item.label)}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div style={styles.injectionBody}>
+              <MarkdownText text={injectionText} variant="compact" labels={markdownLabels} />
+            </div>
+          )}
+          {newest !== undefined && newest.fields.length > 1 ? (
+            <DisclosureRow
+              icon={null}
+              title={t('injectionAllFields')}
+              open={bySection}
+              expandable
+              onToggle={() => setBySection((current) => !current)}
+            >
+              <div style={styles.allSections}>
+                {newest.fields.map((item) => (
+                  <div key={item.label} style={styles.fieldBlock}>
+                    <span style={styles.fieldLabel}>
+                      <FieldGlyph label={item.label} />
+                      {fieldLabel(item.label)}
+                    </span>
+                    <div style={styles.fieldBody}>
+                      <MarkdownText text={item.value} variant="compact" labels={markdownLabels} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DisclosureRow>
+          ) : null}
         </div>
       ) : null}
 

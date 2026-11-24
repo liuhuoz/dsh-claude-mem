@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildOverview } from '../src/overview.js'
+import { buildOverview, splitContextBlock } from '../src/overview.js'
 
 /** The day key claude-mem stamps on its daily telemetry: UTC, per the worker. */
 function utcDay(now: number): string {
@@ -86,6 +86,58 @@ describe('buildOverview', () => {
     expect(overview.projects).toEqual({ total: 3, active: 1, excluded: 2 })
     expect(overview.sessions).toHaveLength(1)
     expect(overview.sessions?.[0]).toMatchObject({ title: 'real session', project: 'a', itemCount: 12 })
+  })
+
+  it('lifts the block stamp out of the fields and orders summaries newest first', () => {
+    const body = [
+      '# Recent Session Context',
+      '',
+      'Showing last 2 session(s) for **alpha**:',
+      '',
+      '**Summary (Prompt #19)**',
+      '**Date:** 2026/11/24 11:59:08',
+      '**Request:** older ask',
+      '',
+      '---',
+      '',
+      '**Summary (Prompt #26)**',
+      '**Date:** 2026/11/24 18:54:11',
+      '**Request:** newer ask',
+    ].join('\n')
+    const { sections } = splitContextBlock(body)
+    expect(sections.map((section) => section.prompt)).toEqual(['Prompt #26', 'Prompt #19'])
+    expect(sections[0]?.date).toBe('2026/11/24 18:54:11')
+    expect(sections[0]?.fields.map((field) => field.label)).toEqual(['Request'])
+    expect(sections[0]?.request).toBe('newer ask')
+    expect(sections[1]?.request).toBe('older ask')
+  })
+
+  it('splits the recent-context block into one entry per summary', () => {
+    const body = [
+      '# Recent Session Context',
+      '',
+      'Showing last 2 session(s) for **alpha**:',
+      '',
+      '---',
+      '',
+      '**Summary (Prompt #19)**',
+      '',
+      '**Request:** rebuild the changelog',
+      '**Completed:** moved the notes',
+      '',
+      '**Summary (Prompt #18)**',
+      '',
+      '**Request:** ship 1.1.0',
+    ].join('\n')
+    const { text, sections } = splitContextBlock(body)
+    expect(text.startsWith('**Summary (Prompt #19)**')).toBe(true)
+    expect(sections.map((section) => section.prompt)).toEqual(['Prompt #19', 'Prompt #18'])
+    expect(sections[0]?.request).toBe('rebuild the changelog')
+    expect(sections[1]?.request).toBe('ship 1.1.0')
+    expect(sections[0]?.fields).toEqual([
+      { label: 'Request', value: 'rebuild the changelog' },
+      { label: 'Completed', value: 'moved the notes' },
+    ])
   })
 
   it('derives the injection project from the newest summarised session', async () => {
