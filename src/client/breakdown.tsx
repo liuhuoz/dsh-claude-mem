@@ -239,6 +239,11 @@ function dayTip(day: string, bucket: DayBucket | undefined, dimension: 'type' | 
   return lines.join('\n')
 }
 
+/** A block dims when a pick or a hover points at a different one. */
+function isDimmed(key: string, selectedKey: string | null, hoverKey: string | null): boolean {
+  return (selectedKey !== null && selectedKey !== key) || (hoverKey !== null && hoverKey !== key)
+}
+
 const styles = {
   section: { display: 'flex', flexDirection: 'column', gap: 8 } as const,
   title: { margin: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -282,6 +287,7 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, sele
   const max = days.reduce((peak, day) => Math.max(peak, byDay.get(day)?.total ?? 0), 0)
   const colorOf = dimension === 'type' ? (key: string) => typeColor(key) : (key: string, index: number) => projectColor(key, index)
   const [hoverDay, setHoverDay] = useState<string | null>(null)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
 
   return (
     <div style={styles.section}>
@@ -299,13 +305,16 @@ export function StackedBars({ days, buckets, dimension, keys, t, limit = 4, sele
                   <i
                     key={segment.key}
                     onClick={onPickKey === undefined ? undefined : () => onPickKey(segment.key)}
+                    onPointerEnter={() => setHoverKey(segment.key)}
+                    onPointerLeave={() => setHoverKey(null)}
                     style={{
                       display: 'block',
                       width: '100%',
                       height: segment.ratio * 100 + '%',
                       background: colorOf(segment.key, index),
                       cursor: onPickKey === undefined ? 'default' : 'pointer',
-                      opacity: selectedKey !== null && segment.key !== selectedKey ? 0.25 : 1,
+                      opacity: isDimmed(segment.key, selectedKey, hoverKey) ? 0.3 : 1,
+                      transition: 'opacity 120ms var(--ds-ease-in-out, ease-out)',
                     }}
                   />
                 ))}
@@ -358,7 +367,7 @@ export function CompositionRing({ entries, caption, t, limit = 6, colorOf, selec
       ) : (
         <div style={styles.ringRow}>
           <div style={styles.ring}>
-            <svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={'0 0 ' + DONUT_SIZE + ' ' + DONUT_SIZE} style={{ display: 'block' }}>
+            <svg width={DONUT_SIZE} height={DONUT_SIZE} viewBox={'0 0 ' + DONUT_SIZE + ' ' + DONUT_SIZE} style={{ display: 'block', overflow: 'visible' }}>
               {arcs.map((arc) => (
                 <Tooltip
                   key={arc.key}
@@ -383,7 +392,7 @@ export function CompositionRing({ entries, caption, t, limit = 6, colorOf, selec
                     strokeDashoffset={arc.offset}
                     transform={'rotate(-90 ' + DONUT_SIZE / 2 + ' ' + DONUT_SIZE / 2 + ')'}
                     onClick={onPickKey === undefined || arc.key === OTHER_KEY ? undefined : () => onPickKey(arc.key)}
-                    strokeOpacity={selectedKey !== null && arc.key !== selectedKey ? 0.35 : 1}
+                    strokeOpacity={isDimmed(arc.key, selectedKey, hoverKey) ? 0.3 : 1}
                     onPointerEnter={() => setHoverKey(arc.key)}
                     onPointerLeave={() => setHoverKey(null)}
                     style={{
@@ -412,10 +421,13 @@ export function CompositionRing({ entries, caption, t, limit = 6, colorOf, selec
               >
                 <span
                   onClick={onPickKey === undefined || entry.key === OTHER_KEY ? undefined : () => onPickKey(entry.key)}
+                  onPointerEnter={() => setHoverKey(entry.key)}
+                  onPointerLeave={() => setHoverKey(null)}
                   style={{
                     display: 'block',
                     cursor: onPickKey === undefined || entry.key === OTHER_KEY ? 'default' : 'pointer',
-                    opacity: selectedKey !== null && entry.key !== selectedKey ? 0.35 : 1,
+                    opacity: isDimmed(entry.key, selectedKey, hoverKey) ? 0.3 : 1,
+                    transition: 'opacity 120ms var(--ds-ease-in-out, ease-out)',
                   }}
                 >
                   <i style={{ ...styles.swatch, background: colorOf(entry.key, index) }} />
@@ -442,6 +454,7 @@ export function ProjectRanking({ projects, excluded, t, selectedKey = null, onPi
   readonly selectedKey?: string | null
   readonly onPickKey?: (key: string) => void
 }): JSX.Element {
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
   const peak = projects.reduce((max, project) => Math.max(max, project.count), 0)
   return (
     <div style={styles.section}>
@@ -457,10 +470,13 @@ export function ProjectRanking({ projects, excluded, t, selectedKey = null, onPi
         >
           <div
             onClick={onPickKey === undefined ? undefined : () => onPickKey(project.key)}
+            onPointerEnter={() => setHoverKey(project.key)}
+            onPointerLeave={() => setHoverKey(null)}
             style={{
               ...styles.rankRow,
               cursor: onPickKey === undefined ? 'default' : 'pointer',
-              opacity: selectedKey !== null && project.key !== selectedKey ? 0.35 : 1,
+              opacity: isDimmed(project.key, selectedKey, hoverKey) ? 0.3 : 1,
+              transition: 'opacity 120ms var(--ds-ease-in-out, ease-out)',
             }}
           >
             <span style={styles.rankName}>{project.key}</span>
