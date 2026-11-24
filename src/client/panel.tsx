@@ -9,13 +9,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Button, Input, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { Overview } from '../overview-types.js'
 import { ClaudeMemIcon } from './icon.js'
 import { ClaudeMemPage } from './page.js'
 import { Heatmap } from './heatmap.js'
-import { CompositionRing, ProjectRanking, StackedBars, crossTotals, lastDays, projectColor, typeColor, windowTotals } from './breakdown.js'
+import { CompositionRing, NEUTRAL_COLOR, ProjectRanking, StackedBars, crossTotals, lastDays, projectColor, typeColor, windowTotals } from './breakdown.js'
 import type { Translate } from './messages.js'
 
 /** The bridge the host registers. */
@@ -105,6 +106,61 @@ const styles = {
   detailRow: { display: 'flex', gap: 8, justifyContent: 'space-between', borderTop: '1px solid var(--dsw-alias-border-l1)', paddingTop: 2 } as const,
   detailCount: { color: 'var(--dsw-alias-label-tertiary)', fontVariantNumeric: 'tabular-nums' } as const,
 } as const
+
+/**
+ * A pill in one of the charts' colours: the fill, the edge and the text all
+ * lean on the same hue, so a tag here and its bar or arc on the distribution
+ * tab read as one thing. The text mixes against the theme's primary label and
+ * the fill against `transparent`, so one set of hex colours works in both
+ * themes.
+ *
+ * The 45% text share is what keeps every palette colour at or above 4.5:1 on
+ * both a white and a dark card — `change` (the yellow) is the binding case,
+ * and at 55% it drops to 3.7:1 on white.
+ * @param color - the palette colour this pill stands for.
+ * @param extra - layout overrides on top of the base pill.
+ * @returns the pill style.
+ */
+function pillStyle(color: string, extra?: CSSProperties): CSSProperties {
+  return {
+    ...styles.tag,
+    color: `color-mix(in srgb, ${color} 45%, var(--dsw-alias-label-primary))`,
+    background: `color-mix(in srgb, ${color} 20%, transparent)`,
+    borderColor: `color-mix(in srgb, ${color} 50%, transparent)`,
+    ...extra,
+  }
+}
+
+/**
+ * The observation-type pill: the type's own colour, so a tag in the recent
+ * list matches that type's bar, arc and legend entry. An unknown type keeps
+ * the charts' neutral tone.
+ * @param type - the observation type, as the overview payload reports it.
+ * @returns the pill style for that type.
+ */
+function tagStyle(type: string): CSSProperties {
+  return pillStyle(typeColor(type))
+}
+
+/**
+ * The project pill: the rank colour the distribution tab hands that project.
+ * A project the charts do not rank (no distribution payload, or a project the
+ * worker excluded) keeps the neutral tone instead of borrowing someone
+ * else's hue. Project keys can be long, so the pill clips rather than grows.
+ * @param project - the project key, as the overview payload reports it.
+ * @param rank - that project's index in the ranked list, when it has one.
+ * @returns the pill style for that project.
+ */
+function projectStyle(project: string, rank: number | undefined): CSSProperties {
+  return pillStyle(rank === undefined ? NEUTRAL_COLOR : projectColor(project, rank), {
+    display: 'inline-block',
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    verticalAlign: 'middle',
+  })
+}
 
 /** Compact human duration, e.g. 9h 12m. */
 function duration(seconds: number | undefined): string {
@@ -223,7 +279,7 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
         <h4 style={styles.sectionTitle}>{t('recentTitle')}</h4>
         {(data.recent ?? []).map((item, index) => (
           <div key={index} style={index === 0 ? { ...styles.row, borderTop: 'none' } : styles.row}>
-            <span style={styles.tag}>{item.type}</span>
+            <span style={tagStyle(item.type)}>{item.type}</span>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
               <span style={styles.rowTitle}>{item.title}</span>
               <span style={styles.rowMeta}>{item.project} · {relative(Date.parse(item.createdAt), t)}</span>
@@ -442,6 +498,14 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
     return sort === 'items' ? list.slice().sort((a, b) => b.itemCount - a.itemCount) : list.slice().sort((a, b) => b.startedAt - a.startedAt)
   }, [data, query, sort])
 
+  // Project chips borrow the rank colours the distribution tab hands each
+  // project, so a session's chip matches that project's bar and ring segment.
+  const projectRank = useMemo(() => {
+    const ranks = new Map<string, number>()
+    for (const [index, entry] of (data?.distributions?.projects ?? []).entries()) ranks.set(entry.key, index)
+    return ranks
+  }, [data])
+
   return (
     <>
       {data?.injection !== null && data?.injection !== undefined ? (
@@ -465,7 +529,10 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
             <span style={styles.rowTitle}>{item.title}</span>
             <span style={styles.kpiLabel}>{t('sessionItems', { count: item.itemCount })}</span>
           </span>
-          <span style={styles.rowMeta}>{item.project} · {t('sessionStarted', { when: relative(item.startedAt, t) })}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={projectStyle(item.project, projectRank.get(item.project))}>{item.project}</span>
+            <span style={styles.rowMeta}>{t('sessionStarted', { when: relative(item.startedAt, t) })}</span>
+          </span>
         </div>
       ))}
       {data !== undefined && sessions.length === 0 ? <span style={styles.muted}>{t('sessionsEmpty')}</span> : null}

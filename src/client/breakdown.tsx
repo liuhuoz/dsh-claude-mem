@@ -31,6 +31,9 @@ export const TYPE_COLORS: Readonly<Record<string, string>> = {
 /** Palette assigned to projects by rank. */
 export const PROJECT_COLORS = ['#5e9eff', '#3ecf8e', '#e8833a', '#a78bfa', '#f2c94c', '#ef7fa8', '#4fd1c5', '#9aa1ad'] as const
 
+/** The tone for anything the palette has no colour of its own for. */
+export const NEUTRAL_COLOR = '#7c8698'
+
 /** The synthetic bucket that absorbs everything past the head of the list. */
 export const OTHER_KEY = 'other'
 
@@ -149,7 +152,7 @@ export function lastDays(count: number, end: Date = new Date()): string[] {
 
 /** Colour for a type key. */
 export function typeColor(key: string): string {
-  return TYPE_COLORS[key] ?? '#7c8698'
+  return TYPE_COLORS[key] ?? NEUTRAL_COLOR
 }
 
 /** Colour for a project key by its rank. */
