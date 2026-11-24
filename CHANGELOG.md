@@ -2,7 +2,7 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
-## Unreleased
+## 1.1.0
 
 ### Changed
 
