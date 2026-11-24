@@ -2,19 +2,31 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
-## Unreleased
+## 1.2.0
 
 ### Added
 
 - A four-tab sidebar panel (Overview, Trend, Sessions, Settings) over one host payload, `GET /api/dsh-claude-mem/overview`: a twelve-week activity heatmap, type and project breakdowns, the session list, and the existing settings page behind an opt-in left-rail entry. The page cannot call the worker itself (its origin is refused), so the host gathers worker, database and SQLite-derived numbers once and the panel renders them.
+- A twelve-week activity heatmap with a theme-aware intensity ramp, per-cell hover text and a two-column summary (7-day share, active days, longest streak, daily average).
+- Daily stacked bars split by observation type or by project over a 7 / 14 / 30-day window: a three-step value scale (0, half and a top rounded to a multiple of twenty), a dated x axis, and a hover that dims every block not under the pointer.
+- Composition rings and a project ranking beside the bars; a click on a block, an arc or a ranking row filters the other distribution charts, and picking a heatmap day narrows them to that day.
+- The sessions tab renders the newest context injection one field at a time, with the remaining fields one fold away.
+- A settings page rebuilt on the panel's card system: four cards, switches on the right, a foldable advanced card, and a save bar pinned to the bottom edge with its result beside the button.
 
 ### Changed
 
 - The panel's overview route now admits requests through the host connection service, the same way the sibling host-route plugins do (`admit()`, or `requestRejection()` on hosts that predate it): a caller the app has not authenticated gets its rejection status instead of the memory payload. A host without a reachable connection service keeps the route open, so the panel still renders there. The health probe stays open on purpose — it only reports the worker's own health after the target is narrowed to loopback.
+- The panel's own header, gutter, cards and type scale follow the market panel, so it reads as a page of the app rather than one bolted onto it.
+- `engines.dsh` now names the prerelease line the host actually publishes (`>=0.2.1-rc.2 <0.3.0-0`); the source typechecks against both 0.2.1-rc.5 and 0.2.0-rc.2.
+- README documents the panel: one row per tab, the sidebar entry, and a three-up screenshot strip.
 
 ### Fixed
 
 - The overview's savings line no longer blanks out after local midnight. claude-mem stamps its daily telemetry `day` on a UTC clock and only rolls the file when it has something to record, while the aggregator demanded the local date; east of the meridian that dropped the numbers for the first hours of every local day. The day comparison is gone: the panel shows the day the file carries and names it under the line, so a quiet day keeps the last numbers instead of an empty line.
+- A hovered composition arc grew past the ring's viewBox and was clipped; the ring now lets its stroke draw outside the frame.
+- The tab strip's rule spanned the whole window; it covers only the reading column.
+- The daily bars drew no value scale and their date labels drifted away from the columns.
+- The settings page's saved notice sat at the far end of the bar instead of beside the button that produced it.
 
 ## 1.1.0
 

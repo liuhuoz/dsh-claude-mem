@@ -5,7 +5,7 @@
 The full [claude-mem](https://github.com/thedotmack/claude-mem) cross-session memory surface for [DeepSeek Harness](https://github.com/deepseek-ai): context injection at session start, plus the memory tools, file context, subagent archiving, failure observations and post-compaction re-injection that the official DSH adapter does not cover.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.1-4D6BFE)](https://github.com/deepseek-ai)
+[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.1--rc.2-4D6BFE)](https://github.com/deepseek-ai)
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520.12-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![claude-mem](https://img.shields.io/badge/claude--mem-%E2%89%A515.17-6E56CF)](https://github.com/thedotmack/claude-mem)
@@ -16,7 +16,7 @@ English · [中文](README.md)
 
 ## Requirements
 
-- DSH ≥ 0.2.1
+- DSH ≥ 0.2.1-rc.2
 - [claude-mem](https://github.com/thedotmack/claude-mem) ≥ 15.17.0 (verified on 15.17.0 and 16.0.2), with `claude-mem` on `PATH`. The worker is started for you.
 
 ## Install
@@ -49,6 +49,30 @@ If `dsh` is not on `PATH`:
 npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
 
+## Panel
+
+The entry is off by default: turning on **Sidebar entry** in the settings puts a dsh-claude-mem icon and entry in the left rail.
+
+| Tab | What it shows |
+|---|---|
+| Overview | Worker status, the five totals, token savings and the most recent observations. |
+| Trend | Daily stacked bars, a twelve-week heatmap, composition rings and the project ranking, filterable by type or project. |
+| Sessions | The newest context injection plus the sessions that produced summaries. |
+| Settings | The configuration below. |
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/overview.png" width="256" alt="Overview"></td>
+    <td><img src="docs/screenshots/trend.png" width="256" alt="Trend"></td>
+    <td><img src="docs/screenshots/settings.png" width="256" alt="Settings"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Overview</sub></td>
+    <td align="center"><sub>Trend</sub></td>
+    <td align="center"><sub>Settings</sub></td>
+  </tr>
+</table>
+
 ## Settings
 
 Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Configure**.
@@ -66,6 +90,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | File delegated runs under the session that started them | Work done by a delegated run is recorded under the session that started it, and archived when the run ends. |
 | Read code structurally through claude-mem | Adds `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`: a file outline and single-symbol source instead of whole files. The model calls them when it wants structure; scoped to the working directory. |
 | Knowledge corpora | Adds the six `mem_corpus_*` tools: topic-scoped slices of memory you can ask questions about. |
+| Sidebar entry | Puts the panel behind a left-rail icon. With it off, **Plugins → dsh-claude-mem → Configure** still opens it (see Panel above). |
 | Observed tools | Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list (advanced). |
 | File-context tools | Only used while “Bring memory into file reads” is on. Comma-separated; the default is `read`. `ops_bash` / `pwsh` are scanned for files and must be added explicitly; `grep` / `glob` are not supported yet. |
 

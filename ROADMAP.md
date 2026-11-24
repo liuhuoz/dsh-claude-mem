@@ -1,7 +1,7 @@
 # 路线图 / Roadmap
 
-Phase 1 已在 0.4.0–0.8.3 之间完成，1.0.0 作为收尾；Phase 2 尚未开始。
-Phase 1 shipped across 0.4.0–0.8.3 and is closed by 1.0.0; Phase 2 has not started.
+Phase 1 已在 0.4.0–0.8.3 之间完成，1.0.0 作为收尾；Phase 2 的四项里三项已随 1.1.0 落地，只剩注入预算待定。
+Phase 1 shipped across 0.4.0–0.8.3 and is closed by 1.0.0; three of Phase 2's four items landed in 1.1.0, leaving the injection budget.
 
 ## 中文
 
@@ -26,9 +26,9 @@ Phase 1 shipped across 0.4.0–0.8.3 and is closed by 1.0.0; Phase 2 has not sta
 
 ### Phase 2 — 效率与控制
 
-- [ ] **file-context 直连 worker** — 把 `claude-mem` CLI 调用（`hook claude-code file-context`，实测 386–650 ms）换成直连 `GET /api/observations/by-file`（74–114 ms），实现落在已有的 `FileContextSource` 接口后面。渲染、按会话去重、mtime 新鲜度、MSYS 路径归一都从 claude-mem 手里收回。by-file 的 `format` 参数实际无效，渲染本来也只能由客户端做。读闸里「记忆是否仍覆盖该文件」的判断也在同一次改动里变准。
-- [ ] **平台身份** — 现在所有落库的观察都记为 `platform_source=claude`，插件默认也不带标签。检索不受影响；要按 `dsh` 过滤，需要写侧改动加一次性回填。
-- [ ] **观察上报成本** — adapter-of-adapter 这条路径为每条工具结果 spawn 一个 `claude-mem` 进程。批量化或降频只是传输层改动；观察生成本身仍在 worker 内。
+- [x] **file-context 直连 worker**（1.1.0） — CLI 调用（`hook claude-code file-context`，实测 386–650 ms）换成直连 `GET /api/observations/by-file`（74–114 ms），实现落在 `FileContextSource` 接口后面。渲染、按会话去重、mtime 新鲜度、MSYS 路径归一都收回到本侧；读闸里「记忆是否仍覆盖该文件」的判断也随之变准。
+- [x] **平台身份**（1.1.0） — 每次写入都带 `platform_source=dsh`，CLI 回退路径同样带；`platformSource` 收成只读过滤条件（留空即不过滤）。不做回填：1.1.0 之前的会话仍记在 `claude` 下。
+- [x] **观察上报成本**（1.1.0） — 工具结果直接 `POST /api/sessions/observations`，不再为每条结果 spawn 进程；观察生成本身仍在 worker 内。
 - [ ] **注入预算** — 这里 file-context 块截到 4000 字符，claude-mem 自己的会话起始块截到 10000。给每个面统一一个策略。
 
 ### 不计划
@@ -64,9 +64,9 @@ Phase 1 shipped across 0.4.0–0.8.3 and is closed by 1.0.0; Phase 2 has not sta
 
 ### Phase 2 — efficiency and control
 
-- [ ] **file-context over HTTP** — replace the `claude-mem` CLI spawn (`hook claude-code file-context`, measured at 386–650 ms) with a direct `GET /api/observations/by-file` (74–114 ms) behind the existing `FileContextSource` seam. This takes over rendering, per-session dedupe, mtime staleness and MSYS path normalization, which claude-mem owns today. The `format` query parameter is inert, so rendering has to move client-side anyway. The gate's "does memory still cover this file" check gets sharper in the same pass.
-- [ ] **Platform identity** — every stored observation currently reports `platform_source=claude`, and the plugin sends no label by default. Retrieval is unaffected; a write-side change plus a one-time backfill is needed before `dsh` can be filtered on.
-- [ ] **Observation transport cost** — the adapter-of-adapter path spawns one `claude-mem` process per recorded tool result. Batching or rate-limiting it is a transport change only: observation generation stays inside the worker.
+- [x] **file-context over HTTP** (1.1.0) — the CLI spawn (`hook claude-code file-context`, measured at 386–650 ms) is replaced by a direct `GET /api/observations/by-file` (74–114 ms) behind the existing `FileContextSource` seam, which brings rendering, per-session dedupe, mtime staleness and MSYS path normalization in-house; the gate's "does memory still cover this file" check got sharper in the same pass.
+- [x] **Platform identity** (1.1.0) — every write now carries `platform_source=dsh`, the CLI fallback included, and `platformSource` became a read-only filter (empty means unfiltered). No backfill: sessions captured before 1.1.0 stay on `claude`.
+- [x] **Observation transport cost** (1.1.0) — a tool result posts straight to `/api/sessions/observations` instead of spawning a process per capture; observation generation stays inside the worker.
 - [ ] **Injection budget** — the file-context block is capped at 4,000 characters here while claude-mem caps its own session-start block at 10,000. Pick one policy per surface.
 
 ### Not planned
