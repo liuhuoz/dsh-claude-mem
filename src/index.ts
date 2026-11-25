@@ -25,6 +25,7 @@ import { memSearchSkill } from './skill.js'
 import { parseWorkerPid, resolveBaseUrl } from './endpoint.js'
 import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES, resolveSettings, type LiveSettings } from './settings.js'
 import { registerHealthBridge, registerOverviewBridge } from './bridge.js'
+import { OPEN_MODE, attachMemoryMode, type MemoryMode } from './memory-mode.js'
 
 export const name = 'dsh-claude-mem'
 export const inject = ['tools', 'skills']
@@ -103,17 +104,32 @@ export function apply(ctx: Context, config: unknown): void {
     dedupe: initial.dedupe,
   })
 
+  /**
+   * The per-session read-only mode. It starts open and is replaced once the
+   * projection and command services mount, so a host that offers neither
+   * records exactly as before.
+   */
+  const mode: MemoryMode = { isReadOnly: OPEN_MODE.isReadOnly }
+  ctx.inject(['sessionProjections', 'commands'], (sctx: Context) => {
+    const live = attachMemoryMode(sctx)
+    mode.isReadOnly = live.isReadOnly
+    sctx.effect(() => () => {
+      mode.isReadOnly = OPEN_MODE.isReadOnly
+    }, 'dsh-claude-mem: read-only mode')
+  })
+
   ctx.skills.register(memSearchSkill)
   applyMemoryTools(ctx, worker, {
     timeoutMs: initial.timeoutMs,
     workState: initial.workState,
+    mode,
   })
   applyMcpTools(ctx, worker, {
     smart: initial.smart,
     corpora: initial.corpora,
     timeoutMs: initial.timeoutMs,
   })
-  applyMemoryHooks(ctx, worker, current)
+  applyMemoryHooks(ctx, worker, current, mode)
   registerHealthBridge(ctx)
   registerOverviewBridge(ctx, () => resolveBaseUrl(current().baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()))
 }
