@@ -5,7 +5,7 @@
 为 [DeepSeek Harness](https://github.com/deepseek-ai) 接入全功能的 [claude-mem](https://github.com/thedotmack/claude-mem) 跨会话记忆能力：以会话启动时的上下文注入为基础，补齐官方 DSH adapter 未覆盖的记忆工具、文件上下文、子代理归档、失败观测与压缩后重注入。
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.1-4D6BFE)](https://github.com/deepseek-ai)
+[![DSH](https://img.shields.io/badge/DSH-%E2%89%A50.2.1--rc.2-4D6BFE)](https://github.com/deepseek-ai)
 [![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520.12-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![claude-mem](https://img.shields.io/badge/claude--mem-%E2%89%A515.17-6E56CF)](https://github.com/thedotmack/claude-mem)
@@ -16,7 +16,7 @@
 
 ## 前置条件
 
-- DSH ≥ 0.2.1
+- DSH ≥ 0.2.1-rc.2
 - [claude-mem](https://github.com/thedotmack/claude-mem) ≥ 15.17.0（已在 15.17.0 与 16.0.2 上验证），且 `claude-mem` 在 `PATH` 上。worker 由插件负责启动。
 
 ## 安装
@@ -35,11 +35,43 @@ dsh plugin --profile web add @liuhuoz/dsh-claude-mem
 dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem
 ```
 
+想跟随后续开发的 `dev` 分支（未发布的改动会先合到这里）：
+
+```sh
+dsh plugin --profile desktop add github:liuhuoz/dsh-claude-mem#dev
+```
+
+`dev` 用于集成尚未发布的改动，可能随时变动；要稳定版本请用上面的 npm 安装或跟随 `main`。
+
 `dsh` 不在 `PATH` 上时：
 
 ```sh
 npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 ```
+
+## 面板
+
+入口默认关闭：打开设置里的「侧边栏入口」后，左侧栏会出现 dsh-claude-mem 图标和入口。
+
+| 标签 | 内容 |
+|---|---|
+| 概览 | worker 状态、五个总量、token 节省与最近观察。 |
+| 分布与趋势 | 每日堆叠柱、十二周热力图、构成环与项目排行，可按类型或项目筛选。 |
+| 会话 | 最近一次上下文注入的摘要，以及产出过摘要的会话列表。 |
+| 设置 | 下文的配置项。 |
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/overview.png" width="256" alt="概览"></td>
+    <td><img src="docs/screenshots/trend.png" width="256" alt="分布与趋势"></td>
+    <td><img src="docs/screenshots/settings.png" width="256" alt="设置"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>概览</sub></td>
+    <td align="center"><sub>分布与趋势</sub></td>
+    <td align="center"><sub>设置</sub></td>
+  </tr>
+</table>
 
 ## 设置
 
@@ -58,6 +90,7 @@ npx -y @deepseek-ai/dsh plugin --profile desktop add @liuhuoz/dsh-claude-mem
 | 把子代理的工作记在发起它的会话名下 | 子代理做的事也记在发起它的会话名下，结束时归档一条。 |
 | 通过 claude-mem 结构化阅读代码 | 新增 `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`：给文件大纲与单个符号的源码，而不是整篇文件。由模型按需调用；仅限当前工作目录。 |
 | 知识语料库 | 新增六个 `mem_corpus_*` 工具：把记忆按主题切成语料库，可以针对某个主题提问。 |
+| 侧边栏入口 | 把面板挂到左侧栏。关闭时仍可从 **插件 → dsh-claude-mem → 配置** 打开（见上文「面板」）。 |
 | 观察白名单 | 仅在上方「观察工具调用并写入记忆」开启时生效；用逗号分隔，留空表示使用默认名单（高级）。 |
 | 带入记忆的工具 | 仅在上方「读取文件时带入相关记忆」开启时生效；用逗号分隔，默认 `read`。`ops_bash` / `pwsh` 会从命令里解析文件，需要显式加入；`grep` / `glob` 暂不支持。 |
 

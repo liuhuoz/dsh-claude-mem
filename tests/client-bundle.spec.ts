@@ -34,6 +34,7 @@ function requireStub(specifier: string): unknown {
       useCallback: (fn: unknown) => fn,
       useEffect: () => {},
       useState: (initial: unknown) => [typeof initial === 'function' ? (initial as () => unknown)() : initial, () => {}],
+      useMemo: (factory: () => unknown) => factory(),
       createElement: () => null,
     }
   }
@@ -99,5 +100,62 @@ describe('client bundle', () => {
       key: '@liuhuoz/dsh-claude-mem#dsh-claude-mem',
       locale: 'dsh-claude-mem',
     })
+  })
+
+  /** Apply the bundle against a shell whose configuration scope holds `sidebarEntry`. */
+  const applyWithScope = (value: boolean | undefined, serveForms = true) => {
+    const exports = entry!.factory(requireStub)
+    const registrations: Array<Record<string, unknown>> = []
+    const dispose = () => () => {}
+    const scope = value === undefined
+      ? undefined
+      : {
+          getSnapshot: () => ({ value: { sidebarEntry: value }, revision: 1, writable: true }),
+          subscribe: dispose,
+          mutate: () => true,
+        }
+    const ctx = {
+      effect: (factory: () => unknown) => {
+        factory()
+        return dispose()
+      },
+      locale: { register: dispose },
+      slots: {
+        inject: (_slot: string, factory: () => unknown) => {
+          factory()
+          return dispose()
+        },
+        register: (options: Record<string, unknown>, component: unknown) => {
+          registrations.push(options)
+          expect(typeof component).toBe('function')
+          return dispose()
+        },
+      },
+      inject: (_deps: string[], run: (inner: unknown) => unknown) => {
+        if (serveForms) run({ configForms: { get: () => scope } })
+        return dispose()
+      },
+    }
+    ;(exports.apply as (ctx: unknown) => void)(ctx)
+    return registrations
+  }
+
+  it.skipIf(entry === undefined)('registers the rail row and its page once the switch is on', () => {
+    const registrations = applyWithScope(true)
+    const row = registrations.find(options => options.name === 'sidebar.panellist')
+    const page = registrations.find(options => options.name === 'main')
+    expect(row).toMatchObject({ id: 'dsh-claude-mem', order: 60 })
+    expect((row!.label as () => string)()).toBe('dsh-claude-mem')
+    expect(page).toMatchObject({ key: 'dsh-claude-mem' })
+  })
+
+  it.skipIf(entry === undefined)('leaves the rail row out while the switch is off', () => {
+    const registrations = applyWithScope(false)
+    expect(registrations.map(options => options.name)).toEqual(['plugins.row.config'])
+  })
+
+  it.skipIf(entry === undefined)('yields to a shell that serves no configuration forms', () => {
+    const registrations = applyWithScope(undefined, false)
+    expect(registrations.map(options => options.name)).toEqual(['plugins.row.config'])
   })
 })

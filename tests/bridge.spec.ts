@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allowedProbeOrigin } from '../src/bridge.js'
+import { admissionRejection, allowedProbeOrigin } from '../src/bridge.js'
 
 /**
  * The bridge takes its target from the page, so this allowlist is the only thing
@@ -38,5 +38,39 @@ describe('allowedProbeOrigin', () => {
     expect(allowedProbeOrigin('   ')).toBeUndefined()
     expect(allowedProbeOrigin('127.0.0.1:37777')).toBeUndefined()
     expect(allowedProbeOrigin('not a url')).toBeUndefined()
+  })
+})
+
+/**
+ * The host connection service owns admission for every same-origin request the
+ * app makes; the bridge asks it the way the sibling host-route plugins do, so the
+ * panel cannot become the one route that skips the app's own login.
+ */
+describe('admissionRejection', () => {
+  it('leaves the route open when no connection service is reachable', () => {
+    expect(admissionRejection({}, undefined)).toBeUndefined()
+    expect(admissionRejection({}, null)).toBeUndefined()
+  })
+
+  it('passes a request the host admits', () => {
+    expect(admissionRejection({}, { admit: () => ({ peer: { id: 'p' } }) })).toBeUndefined()
+  })
+
+  it('returns the status the host rejected with', () => {
+    expect(admissionRejection({}, { admit: () => ({ rejection: 401 }) })).toBe(401)
+    expect(admissionRejection({}, { admit: () => ({ rejection: 403 }) })).toBe(403)
+  })
+
+  it('falls back to requestRejection on hosts without admit()', () => {
+    expect(admissionRejection({}, { requestRejection: () => undefined })).toBeUndefined()
+    expect(admissionRejection({}, { requestRejection: () => 403 })).toBe(403)
+  })
+
+  it('fails closed instead of guessing the request is fine', () => {
+    expect(admissionRejection({}, {})).toBe(503)
+    expect(admissionRejection({}, { admit: () => undefined })).toBe(503)
+    expect(admissionRejection({}, { admit: () => ({ rejection: 'nope' }) })).toBe(503)
+    expect(admissionRejection({}, { admit: () => { throw new Error('boom') } })).toBe(503)
+    expect(admissionRejection({}, { requestRejection: () => { throw new Error('boom') } })).toBe(503)
   })
 })
