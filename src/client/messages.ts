@@ -135,10 +135,9 @@ export const en = {
   unavailable: 'This page is unavailable until the plugin configuration loads.',
   readonlyOn: 'Read-only memory',
   readonlyOff: 'Read-write memory',
-  readonlyShortOn: 'Read-only',
-  readonlyShortOff: 'Writable',
   readonlySwitch: 'Read-only memory',
-  readonlyTitle: 'This session reads project memory and writes none of it back. Click to switch.',
+  readonlyTitleOn: 'This session is read-only: it reads project memory and writes none of it back. Click to record memory again.',
+  readonlyTitleOff: 'This session records memory. Click to make it read-only.',
   readonlyFailed: 'Could not switch: {reason}',
 } as const
 
@@ -273,10 +272,9 @@ export const zh: Record<MessageKey, string> = {
   unavailable: '插件配置加载完成前此页不可用。',
   readonlyOn: '记忆只读',
   readonlyOff: '记忆读写',
-  readonlyShortOn: '只读',
-  readonlyShortOff: '读写',
   readonlySwitch: '只读记忆',
-  readonlyTitle: '本会话读项目记忆，但不写回任何记忆。点一下切换。',
+  readonlyTitleOn: '本会话是记忆只读：可以读项目记忆，不写回任何记忆。点一下恢复记录。',
+  readonlyTitleOff: '本会话正常记录记忆。点一下改为只读。',
   readonlyFailed: '切换失败：{reason}',
 }
 

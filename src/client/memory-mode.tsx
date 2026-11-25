@@ -125,7 +125,9 @@ function MemoryModeBody({ sessionId, useProjection, setReadOnly, variant = 'badg
   useEffect(() => { setError(null) }, [readOnly])
   if (setReadOnly === undefined || sessionId === undefined) return null
   const label = readOnly ? t('readonlyOn') : t('readonlyOff')
-  const title = error === null ? t('readonlyTitle') : t('readonlyFailed', { reason: error })
+  const title = error === null
+    ? (readOnly ? t('readonlyTitleOn') : t('readonlyTitleOff'))
+    : t('readonlyFailed', { reason: error })
   const toggle = async (): Promise<void> => {
     if (pending) return
     setPending(true)
@@ -152,7 +154,7 @@ function MemoryModeBody({ sessionId, useProjection, setReadOnly, variant = 'badg
       </button>
     )
   }
-  const text = variant === 'button' ? (readOnly ? t('readonlyShortOn') : t('readonlyShortOff')) : label
+  const text = label
   return (
     <button {...common} style={variant === 'pill' ? pillStyle(readOnly) : chipStyle(readOnly)}>
       <span style={dotStyle(readOnly)} />
