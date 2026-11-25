@@ -2,6 +2,12 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## Unreleased
+
+### Changed
+
+- The viewer and repository links moved from the overview tab's footer to the right of the tab strip, so every tab shows them.
+
 ## 1.2.0
 
 ### Added
