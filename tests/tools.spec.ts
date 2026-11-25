@@ -116,3 +116,45 @@ describe('mem_get_tool_uses output', () => {
     expect(tool.output.render({}, value)[0].text).toBe('No tool uses found for the given ids.')
   })
 })
+
+/** Register the write tools with a mode and a live-agent map. */
+function captureWrites(mode: unknown, sessions?: Map<string, unknown>): Record<string, Captured> {
+  const registered: Record<string, Captured> = {}
+  const ctx = { tools: { register: (def: Captured) => { registered[def.name] = def } } }
+  const worker = {
+    save: async () => ({ success: true, id: 1, title: 't', project: 'p', message: 'm' }),
+    workStateWrite: async () => 'ok',
+  }
+  applyMemoryTools(ctx as never, worker as never, { timeoutMs: 1000, mode, sessions } as never)
+  return registered
+}
+
+describe('read-only write guard', () => {
+  const READ_ONLY: unknown = { isReadOnly: (session: { id?: string } | undefined) => session?.id === 'read-only' }
+
+  it('refuses a save from the read-only session itself', async () => {
+    const tool = captureWrites(READ_ONLY).mem_save
+    await expect(tool.execute({ text: 'x' }, { agent: { session: { id: 'read-only', header: {} } } }))
+      .rejects.toThrow(/MemReadOnly/)
+  })
+
+  it('refuses a save from a delegated run under a read-only parent', async () => {
+    const sessions = new Map<string, unknown>([['read-only', { session: { id: 'read-only', header: {} } }]])
+    const tool = captureWrites(READ_ONLY, sessions).mem_save
+    const agent = { session: { id: 'child', header: { origin: 'subagent', parentSessionId: 'read-only' } } }
+    await expect(tool.execute({ text: 'x' }, { agent })).rejects.toThrow(/MemReadOnly/)
+  })
+
+  it('refuses a work-state write from a delegated run under a read-only parent', async () => {
+    const sessions = new Map<string, unknown>([['read-only', { session: { id: 'read-only', header: {} } }]])
+    const tool = captureWrites(READ_ONLY, sessions).work_state_write
+    const agent = { session: { id: 'child', header: { origin: 'subagent', parentSessionId: 'read-only' } } }
+    await expect(tool.execute({ list: 'probe', fields: { task: 'x' } }, { agent })).rejects.toThrow(/MemReadOnly/)
+  })
+
+  it('keeps letting a read-write session save', async () => {
+    const tool = captureWrites({ isReadOnly: () => false }).mem_save
+    const value = await tool.execute({ text: 'x' }, { agent: { session: { id: 'plain', header: {} } } })
+    expect(value).toMatchObject({ success: true })
+  })
+})

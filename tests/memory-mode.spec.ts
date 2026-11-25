@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { applyMemoryHooks } from '../src/hooks.ts'
 import {
   OPEN_MODE, READ_ONLY_EVENT, READ_ONLY_PROJECTION, attachMemoryMode, foldReadOnly,
-  parseModeArgument, readOnlyOf, type MemoryMode,
+  ownerSessionId, parseModeArgument, readOnlyOf, type MemoryMode,
 } from '../src/memory-mode.ts'
 import type { LiveSettings } from '../src/settings.ts'
 
@@ -89,6 +89,20 @@ describe('parseModeArgument', () => {
 
   it('rejects anything else', () => {
     expect(parseModeArgument('maybe', false)).toBeUndefined()
+  })
+})
+
+describe('ownerSessionId', () => {
+  it('keeps an ordinary session as its own owner', () => {
+    expect(ownerSessionId({ id: 'session-1', header: { cwd: 'C:/work' } } as never)).toBe('session-1')
+  })
+
+  it('files a delegated run under its parent', () => {
+    expect(ownerSessionId({ id: 'child', header: { origin: 'subagent', parentSessionId: 'parent' } } as never)).toBe('parent')
+  })
+
+  it('does not treat a fork without a parent id as delegated', () => {
+    expect(ownerSessionId({ id: 'fork', header: { delegationDepth: 0 } } as never)).toBe('fork')
   })
 })
 
@@ -250,6 +264,14 @@ describe('capture gates', () => {
     const { worker, emit } = harness(READ_ONLY)
     const agent = agentOf({ id: 'read-only', header: { cwd: 'C:/work' } })
     await emit('agent/turn-stopping', { agent })
+    expect(worker.sessionSummarize).not.toHaveBeenCalled()
+  })
+
+  it('summarizes nothing for a run started from a read-only session', async () => {
+    const { worker, emit } = harness(READ_ONLY)
+    await emit('agent/created', { agent: agentOf({ id: 'read-only', header: { cwd: 'C:/work' } }) })
+    const child = agentOf({ id: 'child-4', header: { cwd: 'C:/work', origin: 'subagent', parentSessionId: 'read-only' } })
+    await emit('agent/turn-stopping', { agent: child })
     expect(worker.sessionSummarize).not.toHaveBeenCalled()
   })
 
