@@ -114,7 +114,8 @@ const styles = {
   projectTag: { display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, maxWidth: '100%', verticalAlign: 'middle' } as const,
   projectDot: { width: 6, height: 6, borderRadius: '50%', flex: 'none', display: 'block' } as const,
   projectName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const,
-  links: { display: 'flex', gap: 12, fontSize: 12 } as const,
+  /** The viewer and repository links ride the tab strip, right-aligned. */
+  links: { display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto', fontSize: 12 } as const,
   link: { color: 'var(--dsw-alias-state-business-primary)', textDecoration: 'none', borderBottom: '1px dashed currentColor', cursor: 'pointer' } as const,
   muted: { fontSize: 11.5, color: 'var(--dsw-alias-label-tertiary)' } as const,
   toolbar: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } as const,
@@ -328,10 +329,6 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
         {data.recent === null ? <span style={styles.muted}>{t('overviewUnavailable')}</span> : null}
       </div>
 
-      <div style={styles.links}>
-        <a style={styles.link} onClick={() => window.open('http://127.0.0.1:' + (worker?.port ?? 37777), '_blank', 'noopener')}>{t('openViewer')}</a>
-        <a style={styles.link} onClick={() => window.open('https://github.com/liuhuoz/dsh-claude-mem', '_blank', 'noopener')}>GitHub</a>
-      </div>
     </>
   )
 }
@@ -691,6 +688,23 @@ function SessionsTab({ t }: { t: Translate }): JSX.Element {
 /** The panel: tab strip plus the selected page. */
 export function ClaudeMemTabs({ t, form }: { t: Translate; form?: ConfigPageForm | undefined }): JSX.Element {
   const [tab, setTab] = useState<TabKey>('overview')
+  // The viewer link lives in the tab strip now, so the shell owns the one number
+  // it needs: the port the worker published.
+  const [viewerPort, setViewerPort] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const response = await fetch(OVERVIEW_PATH, { headers: { accept: 'application/json' } })
+        if (!response.ok) return
+        const payload = await response.json() as Overview
+        if (alive) setViewerPort(payload.worker?.port)
+      } catch {
+        /* the overview tab reports failures; the link keeps its default port */
+      }
+    })()
+    return () => { alive = false }
+  }, [])
   return (
     <div style={styles.root}>
       <header style={styles.head}>
@@ -709,6 +723,10 @@ export function ClaudeMemTabs({ t, form }: { t: Translate; form?: ConfigPageForm
               {entry.label(t)}
             </button>
           ))}
+          <span style={styles.links}>
+            <a style={styles.link} onClick={() => window.open('http://127.0.0.1:' + (viewerPort ?? 37777), '_blank', 'noopener')}>{t('openViewer')}</a>
+            <a style={styles.link} onClick={() => window.open('https://github.com/liuhuoz/dsh-claude-mem', '_blank', 'noopener')}>GitHub</a>
+          </span>
         </div>
       </nav>
       <div style={styles.body}>
