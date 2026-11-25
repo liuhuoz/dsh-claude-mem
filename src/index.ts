@@ -12,6 +12,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import Schema from '@deepseek-ai/schemastery'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -110,6 +111,9 @@ export function apply(ctx: Context, config: unknown): void {
    * records exactly as before.
    */
   const mode: MemoryMode = { isReadOnly: OPEN_MODE.isReadOnly }
+
+  /** Live agents by session id, shared by the write hooks and the write tools. */
+  const liveAgents = new Map<string, Agent>()
   ctx.inject(['sessionProjections', 'commands'], (sctx: Context) => {
     const live = attachMemoryMode(sctx)
     mode.isReadOnly = live.isReadOnly
@@ -123,13 +127,14 @@ export function apply(ctx: Context, config: unknown): void {
     timeoutMs: initial.timeoutMs,
     workState: initial.workState,
     mode,
+    sessions: liveAgents,
   })
   applyMcpTools(ctx, worker, {
     smart: initial.smart,
     corpora: initial.corpora,
     timeoutMs: initial.timeoutMs,
   })
-  applyMemoryHooks(ctx, worker, current, mode)
+  applyMemoryHooks(ctx, worker, current, mode, liveAgents)
   registerHealthBridge(ctx)
   registerOverviewBridge(ctx, () => resolveBaseUrl(current().baseUrl, process.env.DSH_MEM_BASE_URL, publishedWorkerPort()))
 }

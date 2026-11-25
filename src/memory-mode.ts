@@ -63,6 +63,27 @@ export interface MemoryMode {
 /** The mode before the projection service mounts: nothing is read-only. */
 export const OPEN_MODE: MemoryMode = { isReadOnly: () => false }
 
+/** Session header fields the ownership decision reads; the published type is narrower. */
+interface DelegationHeader {
+  readonly origin?: string
+  readonly parentSessionId?: string
+  readonly delegationDepth?: number
+}
+
+/**
+ * The session a write belongs to: a delegated run files under its parent.
+ * Mirrors the attribution the capture hooks apply to observations.
+ * @param session - the session the write was issued from.
+ * @returns the owning session id, which is the same session for ordinary runs.
+ */
+export function ownerSessionId(session: Session): string {
+  const header = session.header as unknown as DelegationHeader
+  const delegated = header.origin === 'subagent' || (header.delegationDepth ?? 0) > 0
+  return delegated && typeof header.parentSessionId === 'string' && header.parentSessionId.length > 0
+    ? header.parentSessionId
+    : session.id
+}
+
 /**
  * Fold one committed event into the mode. Every other event leaves the state
  * alone.

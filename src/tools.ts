@@ -7,7 +7,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type { MemoryMode } from './memory-mode.js'
+import { ownerSessionId, type MemoryMode } from './memory-mode.js'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkerClient } from './worker.js'
 import type {
   MemDumbSearchRequest,
@@ -32,6 +33,8 @@ export interface ToolsConfig {
   toolUses?: boolean
   /** Per-session memory mode; a read-only session refuses the two writes below. */
   mode?: MemoryMode
+  /** Live agents by session id, so a delegated run resolves its parent's mode. */
+  sessions?: ReadonlyMap<string, { session: Session }>
   timeoutMs: number
 }
 
@@ -131,9 +134,9 @@ export function applyMemoryTools(ctx: Context, worker: WorkerClient, config: Too
   if (config.search !== false) applySearchTool(ctx, worker, config.timeoutMs)
   if (config.timeline !== false) applyTimelineTool(ctx, worker, config.timeoutMs)
   if (config.getObservations !== false) applyGetObservationsTool(ctx, worker, config.timeoutMs)
-  if (config.save !== false) applySaveTool(ctx, worker, config.timeoutMs, config.mode)
+  if (config.save !== false) applySaveTool(ctx, worker, config.timeoutMs, config.mode, config.sessions)
   if (config.context !== false) applyContextTool(ctx, worker, config.timeoutMs)
-  if (config.workState !== false) applyWorkStateTools(ctx, worker, config.timeoutMs, config.mode)
+  if (config.workState !== false) applyWorkStateTools(ctx, worker, config.timeoutMs, config.mode, config.sessions)
   if (config.dumbSearch !== false) applyDumbSearchTool(ctx, worker, config.timeoutMs)
   if (config.toolUses !== false) applyToolUsesTool(ctx, worker, config.timeoutMs)
 }
@@ -410,16 +413,34 @@ function applyGetObservationsTool(ctx: Context, worker: WorkerClient, timeoutMs:
 
 /**
  * Refuse a memory write from a read-only session.
+ *
+ * A delegated run files under its parent, so the parent's mode decides — the
+ * child session itself never carries the event.
  * @param mode - the per-session mode; absent when its services never mounted.
  * @param agent - the calling agent; a call without one is never read-only.
+ * @param sessions - live agents by session id, used to reach the parent.
  */
-function refuseWhenReadOnly(mode: MemoryMode | undefined, agent: ToolExecution['agent']): void {
-  if (mode?.isReadOnly(agent?.session) === true) {
+function refuseWhenReadOnly(
+  mode: MemoryMode | undefined,
+  agent: ToolExecution['agent'],
+  sessions?: ReadonlyMap<string, { session: Session }>,
+): void {
+  const own = agent?.session
+  if (own === undefined) return
+  const owner = ownerSessionId(own)
+  const target = owner === own.id ? own : (sessions?.get(owner)?.session ?? own)
+  if (mode?.isReadOnly(target) === true) {
     throw new Error('MemReadOnly: this session writes nothing to memory; run /mem-readonly to record again.')
   }
 }
 
-function applyWorkStateTools(ctx: Context, worker: WorkerClient, timeoutMs: number, mode?: MemoryMode): void {
+function applyWorkStateTools(
+  ctx: Context,
+  worker: WorkerClient,
+  timeoutMs: number,
+  mode?: MemoryMode,
+  sessions?: ReadonlyMap<string, { session: Session }>,
+): void {
   ctx.tools.register(defineTool({
     name: 'work_state_write',
     description: 'Your canonical to-do list and working state for this project, kept across sessions: whatever is still open is shown at the start of every session. Each call appends one entry to a list. To-do item: fields {"task": "<name>", "status": "todo" | "doing" | "done" | "dropped", ...details}. State on the list itself: any other fields (the latest value of each key wins; null clears a key; "status": "done" closes the list). Returns what is still open in the list. Params: list (required), fields (required).',
@@ -434,7 +455,7 @@ function applyWorkStateTools(ctx: Context, worker: WorkerClient, timeoutMs: numb
     timeoutMs,
     isConcurrencySafe: () => true,
     async execute(args, exec) {
-      refuseWhenReadOnly(mode, exec.agent)
+      refuseWhenReadOnly(mode, exec.agent, sessions)
       const cwd = exec.agent?.session.header.cwd
       return await worker.workStateWrite({
         cwd: typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd(),
@@ -468,7 +489,13 @@ function applyWorkStateTools(ctx: Context, worker: WorkerClient, timeoutMs: numb
   }))
 }
 
-function applySaveTool(ctx: Context, worker: WorkerClient, timeoutMs: number, mode?: MemoryMode): void {
+function applySaveTool(
+  ctx: Context,
+  worker: WorkerClient,
+  timeoutMs: number,
+  mode?: MemoryMode,
+  sessions?: ReadonlyMap<string, { session: Session }>,
+): void {
   ctx.tools.register(defineTool({
     name: 'mem_save',
     description: 'Save one manual memory as an observation in persistent memory (no generation job; stores the text as given).',
@@ -495,7 +522,7 @@ function applySaveTool(ctx: Context, worker: WorkerClient, timeoutMs: number, mo
     timeoutMs,
     isConcurrencySafe: () => true,
     async execute(args, exec) {
-      refuseWhenReadOnly(mode, exec.agent)
+      refuseWhenReadOnly(mode, exec.agent, sessions)
       const input: MemSaveRequest = {
         text: args.text.trim(),
         ...args.title !== undefined ? { title: args.title } : {},

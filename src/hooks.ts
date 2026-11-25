@@ -559,13 +559,13 @@ export function applyMemoryHooks(
   worker: WorkerClient,
   getSettings: SettingsSource,
   mode: MemoryMode = OPEN_MODE,
+  agents: Map<string, Agent> = new Map(),
 ): void {
   ensureWorkerStarted(getSettings())
 
   const on = ctx.on.bind(ctx) as unknown as OnAny
 
-  /** Live agents by session id, so a session event can reach the agent to inject into. */
-  const agents = new Map<string, Agent>()
+  /** `agents` is passed in: the same live map the write tools resolve a delegated run's parent with. */
 
   /** Delegated runs by child session id; their work is filed against the parent. */
   const subagents = new Map<string, SubagentIdentity>()
@@ -588,8 +588,9 @@ export function applyMemoryHooks(
 
   const debug = debugLogger(ctx)
 
-  /** Read-only state of the session that owns a write, resolved through the live agents. */
-  const isReadOnly = (sessionId: string): boolean => mode.isReadOnly(agents.get(sessionId)?.session)
+  /** Read-only state of the session that owns a write; the caller's own session needs no lookup. */
+  const isReadOnly = (sessionId: string, own?: Agent['session']): boolean =>
+    mode.isReadOnly(sessionId === own?.id ? own : agents.get(sessionId)?.session)
 
   /** One file's memory, shared by the read gate and the block that follows it. */
   const fileMemory = new FileMemoryLookup(worker)
@@ -717,7 +718,11 @@ export function applyMemoryHooks(
 
   on('agent/turn-stopping', (payload: { agent: Agent }) => {
     const settings = getSettings()
-    if (settings.summarize && !mode.isReadOnly(payload.agent.session)) void summarizeSession(worker, payload.agent, settings)
+    if (!settings.summarize) return
+    // A delegated run writes under its parent, so the parent's mode decides.
+    const owner = attributionOf(payload.agent, subagents).sessionId
+    if (isReadOnly(owner, payload.agent.session)) return
+    void summarizeSession(worker, payload.agent, settings)
   })
 }
 
@@ -727,7 +732,7 @@ function observeToolResult(
   result: Readonly<ToolExecutionResult>,
   settings: LiveSettings,
   subagents: Map<string, SubagentIdentity>,
-  isReadOnly: (sessionId: string) => boolean,
+  isReadOnly: (sessionId: string, own?: Agent['session']) => boolean,
 ): void {
   if (!settings.toolFilter.names.includes(exec.name)) return
   const agent = exec.agent
@@ -743,7 +748,7 @@ function observeToolResult(
   if (body.length === 0) return
   // A delegated run writes under its parent's name, so the parent's mode decides.
   const attribution = attributionOf(agent, subagents)
-  if (isReadOnly(attribution.sessionId)) return
+  if (isReadOnly(attribution.sessionId, agent.session)) return
   recordToolUse(worker, exec, agent, body, settings, attribution, result.isError)
 }
 
