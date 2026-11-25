@@ -21,7 +21,7 @@ export const READ_ONLY_PROJECTION = 'memReadOnly'
 export const READ_ONLY_COMMAND = 'mem-readonly'
 
 /** Which seat the control is rendered in. */
-export type MemoryModeVariant = 'button' | 'badge' | 'option' | 'pill'
+export type MemoryModeVariant = 'button' | 'badge' | 'dock' | 'option'
 
 /** The business face every registration injects. */
 export interface MemoryModeInjected {
@@ -37,35 +37,54 @@ export interface MemoryModeProps extends Partial<MemoryModeInjected> {
   readonly t?: Translate
 }
 
-const BASE: CSSProperties = {
+const SECONDARY = 'var(--dsw-alias-label-secondary)'
+const TERTIARY = 'var(--dsw-alias-label-tertiary)'
+const ACCENT = 'var(--dsw-alias-brand-primary, #d9a441)'
+
+/** The composer pill: a light outline on the raised layer, as the usage chips read. */
+const CHIP: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 6,
-  border: '1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.32))',
-  background: 'transparent',
-  color: 'inherit',
+  gap: 5,
+  border: '1px solid var(--dsw-alias-border-l1)',
+  background: 'var(--dsw-alias-bg-layer-3)',
+  color: SECONDARY,
   font: 'inherit',
-  fontSize: 12,
-  lineHeight: '18px',
-  padding: '2px 8px',
+  fontSize: 11,
+  lineHeight: '16px',
+  padding: '2px 9px',
   borderRadius: 999,
   cursor: 'pointer',
   opacity: 0.9,
 }
 
-const ACTIVE_BACKGROUND = 'var(--dsw-alias-bg-layer-2, rgba(127,127,127,.18))'
-const ACCENT = 'var(--dsw-alias-brand-primary, #d9a441)'
-
-function chipStyle(readOnly: boolean): CSSProperties {
-  return { ...BASE, background: readOnly ? ACTIVE_BACKGROUND : 'transparent' }
+/** The header and dock form: a dot and a word, no edge, so it reads as status. */
+const TEXT: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  border: 0,
+  background: 'transparent',
+  color: TERTIARY,
+  font: 'inherit',
+  fontSize: 11.5,
+  lineHeight: '18px',
+  padding: '2px 4px',
+  borderRadius: 6,
+  cursor: 'pointer',
+  opacity: 0.85,
 }
 
-function pillStyle(readOnly: boolean): CSSProperties {
-  return { ...BASE, fontSize: 11, padding: '1px 7px', opacity: 0.8, background: readOnly ? ACTIVE_BACKGROUND : 'transparent' }
+function chipStyle(readOnly: boolean): CSSProperties {
+  return { ...CHIP, color: readOnly ? ACCENT : SECONDARY }
+}
+
+function textStyle(readOnly: boolean): CSSProperties {
+  return { ...TEXT, color: readOnly ? ACCENT : TERTIARY, opacity: readOnly ? 1 : 0.85 }
 }
 
 function optionStyle(): CSSProperties {
-  return { ...BASE, border: 0, padding: 0, gap: 8, background: 'transparent' }
+  return { ...CHIP, border: 0, padding: 0, gap: 8, background: 'transparent' }
 }
 
 function dotStyle(readOnly: boolean): CSSProperties {
@@ -154,11 +173,10 @@ function MemoryModeBody({ sessionId, useProjection, setReadOnly, variant = 'badg
       </button>
     )
   }
-  const text = label
   return (
-    <button {...common} style={variant === 'pill' ? pillStyle(readOnly) : chipStyle(readOnly)}>
+    <button {...common} style={variant === 'button' ? chipStyle(readOnly) : textStyle(readOnly)}>
       <span style={dotStyle(readOnly)} />
-      {text}
+      {label}
     </button>
   )
 }

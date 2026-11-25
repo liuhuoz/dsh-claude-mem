@@ -29,6 +29,8 @@ const PAGE_FIELDS = new Set([
   'corpora',
   'fileContextTools',
   'sidebarEntry',
+  'sessionSeat',
+  'seatHero',
 ])
 
 const defaults = () => toDraft(undefined)
@@ -50,6 +52,8 @@ describe('toDraft', () => {
     expect(draft.fileContext).toBe(false)
     expect(draft.fileContextGate).toBe(false)
     expect(draft.sidebarEntry).toBe(false)
+    expect(draft.sessionSeat).toBe('composer')
+    expect(draft.seatHero).toBe(true)
     expect(draft.toolNames).toBe('')
     expect(draft.fileContextTools).toBe('')
   })
@@ -119,6 +123,12 @@ describe('toOperations', () => {
     const ops = toOperations({ ...defaults(), toolNames: '   ', fileContextTools: '' })
     expect(ops.find((op) => op.path[0] === 'toolFilter')).toEqual({ op: 'unset', path: ['toolFilter'] })
     expect(ops.find((op) => op.path[0] === 'fileContextTools')).toEqual({ op: 'unset', path: ['fileContextTools'] })
+  })
+
+  it('carries the seat choice and the New Session switch', () => {
+    const ops = toOperations({ ...defaults(), sessionSeat: 'dock', seatHero: false })
+    expect(ops.find(op => op.path[0] === 'sessionSeat')).toEqual({ op: 'set', path: ['sessionSeat'], value: 'dock' })
+    expect(ops.find(op => op.path[0] === 'seatHero')).toEqual({ op: 'set', path: ['seatHero'], value: false })
   })
 
   it('carries every switch across, including the sidebar entry', () => {

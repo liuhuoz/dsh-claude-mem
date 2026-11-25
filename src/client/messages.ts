@@ -136,9 +136,17 @@ export const en = {
   readonlyOn: 'Read-only memory',
   readonlyOff: 'Read-write memory',
   readonlySwitch: 'Read-only memory',
-  readonlyTitleOn: 'This session is read-only: it reads project memory and writes none of it back. Click to record memory again.',
-  readonlyTitleOff: 'This session records memory. Click to make it read-only.',
+  readonlyTitleOn: 'Memory is read-only, not writable. Click to switch to read-write.',
+  readonlyTitleOff: 'Memory records normally and is writable. Click to switch to read-only.',
   readonlyFailed: 'Could not switch: {reason}',
+  seatComposer: 'Composer tool-row button',
+  seatHeader: 'Session header status',
+  seatDock: 'Status row under the composer',
+  seatNone: 'Off',
+  sessionSeat: 'In-session control position',
+  sessionSeatHint: 'Where the read-only control appears inside a session; “Off” hides all three. /mem-readonly still switches the mode.',
+  seatHero: 'Show the control on the New Session page',
+  seatHeroHint: 'Puts the switch beside the workspace and run-mode dropdowns.',
 } as const
 
 /** Keys the page renders. */
@@ -273,9 +281,17 @@ export const zh: Record<MessageKey, string> = {
   readonlyOn: '记忆只读',
   readonlyOff: '记忆读写',
   readonlySwitch: '只读记忆',
-  readonlyTitleOn: '本会话是记忆只读：可以读项目记忆，不写回任何记忆。点一下恢复记录。',
-  readonlyTitleOff: '本会话正常记录记忆。点一下改为只读。',
+  readonlyTitleOn: '当前记忆只读，不可写。点击切换读写',
+  readonlyTitleOff: '当前记忆正常记录，可读写。点击切换只读',
   readonlyFailed: '切换失败：{reason}',
+  seatComposer: '输入框左侧按钮',
+  seatHeader: '会话标题栏状态',
+  seatDock: '输入框下方状态',
+  seatNone: '关闭',
+  sessionSeat: '会话页内记忆读写控件位置',
+  sessionSeatHint: '控件出现在会话页的哪个位置；选「关闭」三个位置都不显示。/mem-readonly 始终可用。',
+  seatHero: '在新会话页显示记忆读写控件',
+  seatHeroHint: '开关会出现在工作区与运行模式两个下拉的右侧。',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

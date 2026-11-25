@@ -75,6 +75,9 @@ export const Config = Schema.object({
   timeoutMs: Schema.number().default(30_000),
   dedupe: Schema.boolean().default(true),
   sidebarEntry: Schema.boolean().default(false).volatile(),
+  /** Where the in-session read-only control sits; 'none' hides all three seats. */
+  sessionSeat: Schema.string().default('composer').volatile(),
+  seatHero: Schema.boolean().default(true).volatile(),
   platformSource: Schema.string().default(''),
   project: Schema.string().default(''),
   ingest: Schema.boolean().default(true).volatile(),

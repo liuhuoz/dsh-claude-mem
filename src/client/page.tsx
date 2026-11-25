@@ -13,7 +13,7 @@ import { Button, Input, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-prim
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { HEALTH_BRIDGE_PATH, parseHealth, readHealth } from '../probe.js'
-import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES } from '../settings.js'
+import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES, SESSION_SEATS, type SessionSeat } from '../settings.js'
 import type { MessageKey } from './messages.js'
 
 /** Translation seat this page renders with. */
@@ -42,6 +42,8 @@ export interface Draft {
   fileContextTools: string
   toolNames: string
   sidebarEntry: boolean
+  sessionSeat: SessionSeat
+  seatHero: boolean
 }
 
 /** Health probe as the page shows it. */
@@ -93,6 +95,8 @@ const layout = {
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', boxSizing: 'border-box', margin: 0, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' } as const,
   chevron: { fontSize: 10, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
   advancedBody: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
+  /** The one dropdown on the page: the in-session seat choice. */
+  select: { font: 'inherit', fontSize: 12, lineHeight: '18px', padding: '3px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)', color: 'inherit' } as const,
   /** Pinned to the bottom edge of the scrollport, so a save is always in reach. */
   saveBar: { position: 'sticky', bottom: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, boxSizing: 'border-box', padding: '8px 12px', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10 } as const,
 } as const
@@ -107,6 +111,21 @@ function toolNamesOf(value: Record<string, unknown>): string[] {
 function fileContextToolsOf(value: Record<string, unknown>): string[] {
   const list = value.fileContextTools
   return Array.isArray(list) ? list.filter((name): name is string => typeof name === 'string') : []
+}
+
+/** Read one stored seat choice; an unknown value falls back to the composer. */
+/** Option label of each in-session seat, in the page's own dictionary. */
+const SEAT_LABELS: Record<SessionSeat, 'seatComposer' | 'seatHeader' | 'seatDock' | 'seatNone'> = {
+  composer: 'seatComposer',
+  header: 'seatHeader',
+  dock: 'seatDock',
+  none: 'seatNone',
+}
+
+function seatOf(value: unknown): SessionSeat {
+  return typeof value === 'string' && (SESSION_SEATS as readonly string[]).includes(value)
+    ? value as SessionSeat
+    : 'composer'
 }
 
 export function toDraft(value: Record<string, unknown> | undefined): Draft {
@@ -126,6 +145,8 @@ export function toDraft(value: Record<string, unknown> | undefined): Draft {
     fileContextTools: fileContextToolsOf(source).join(', '),
     toolNames: toolNamesOf(source).join(', '),
     sidebarEntry: source.sidebarEntry === true,
+    sessionSeat: seatOf(source.sessionSeat),
+    seatHero: source.seatHero !== false,
   }
 }
 
@@ -154,6 +175,8 @@ export function toOperations(draft: Draft): SettingsPathOpView[] {
     { op: 'set', path: ['corpora'], value: draft.corpora },
     contextNames.length === 0 ? { op: 'unset', path: ['fileContextTools'] } : { op: 'set', path: ['fileContextTools'], value: contextNames },
     { op: 'set', path: ['sidebarEntry'], value: draft.sidebarEntry },
+    { op: 'set', path: ['sessionSeat'], value: draft.sessionSeat },
+    { op: 'set', path: ['seatHero'], value: draft.seatHero },
   ]
 }
 
@@ -447,6 +470,34 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
             disabled={!writable}
             label={t('sidebarEntry')}
             onChange={next => update('sidebarEntry', next)}
+          />
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('sessionSeat')}</span>
+            <span style={layout.hint}>{t('sessionSeatHint')}</span>
+          </div>
+          <select
+            style={layout.select}
+            value={draft.sessionSeat}
+            disabled={!writable}
+            onChange={event => update('sessionSeat', event.target.value as SessionSeat)}
+          >
+            {SESSION_SEATS.map(seat => (
+              <option key={seat} value={seat}>{t(SEAT_LABELS[seat])}</option>
+            ))}
+          </select>
+        </div>
+        <div style={layout.toggle}>
+          <div style={layout.toggleText}>
+            <span style={layout.toggleTitle}>{t('seatHero')}</span>
+            <span style={layout.hint}>{t('seatHeroHint')}</span>
+          </div>
+          <Switch
+            checked={draft.seatHero}
+            disabled={!writable}
+            label={t('seatHero')}
+            onChange={next => update('seatHero', next)}
           />
         </div>
       </section>
