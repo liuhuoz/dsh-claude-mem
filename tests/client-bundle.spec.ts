@@ -158,4 +158,74 @@ describe('client bundle', () => {
     const registrations = applyWithScope(undefined, false)
     expect(registrations.map(options => options.name)).toEqual(['plugins.row.config'])
   })
+
+  /** Apply the bundle against a shell that serves the command channel. */
+  const applyWithModeSeats = () => {
+    const exports = entry!.factory(requireStub)
+    const registrations: Array<Record<string, unknown>> = []
+    const calls: Array<{ sessionId: string; line: string }> = []
+    let answer: { ok: boolean; value?: unknown; error?: { message: string; code: string } } = { ok: true, value: { kind: 'success' } }
+    const dispose = () => () => {}
+    const slots = {
+      inject: (_slot: string, factory: () => unknown) => {
+        factory()
+        return dispose()
+      },
+      register: (options: Record<string, unknown>, component: unknown) => {
+        registrations.push(options)
+        expect(typeof component).toBe('function')
+        return dispose()
+      },
+    }
+    const remote = {
+      commands: {
+        execute: async (sessionId: string, line: string) => {
+          calls.push({ sessionId, line })
+          return answer
+        },
+      },
+    }
+    const ctx = {
+      effect: (factory: () => unknown) => {
+        factory()
+        return dispose()
+      },
+      locale: { register: dispose },
+      slots,
+      inject: (_deps: string[], run: (inner: unknown) => unknown) => {
+        run({ slots, remote })
+        return dispose()
+      },
+    }
+    ;(exports.apply as (ctx: unknown) => void)(ctx)
+    return { registrations, calls, fail: () => { answer = { ok: false, error: { message: 'refused', code: 'DENIED' } } } }
+  }
+
+  it.skipIf(entry === undefined)('mounts the read-only control at four seats', () => {
+    const { registrations } = applyWithModeSeats()
+    const seats = registrations.filter(options => String(options.name ?? '').startsWith('conversation.'))
+    expect(seats.map(options => options.name)).toEqual([
+      'conversation.input.left',
+      'conversation.session.header.actions',
+      'conversation.hero.options',
+      'conversation.composer.dock',
+    ])
+    for (const seat of seats) {
+      expect(seat).toMatchObject({ id: 'dsh-claude-mem-readonly', locale: 'dsh-claude-mem' })
+      expect(typeof seat.inject).toBe('function')
+    }
+  })
+
+  it.skipIf(entry === undefined)('switches the mode through the host command', async () => {
+    const { registrations, calls, fail } = applyWithModeSeats()
+    const option = registrations.find(options => options.name === 'conversation.hero.options')!
+    const face = (option.inject as (id: string) => { variant: string; setReadOnly: (on: boolean) => Promise<string | null> })('session-1')
+    expect(face.variant).toBe('option')
+    await expect(face.setReadOnly(true)).resolves.toBeNull()
+    expect(calls).toEqual([{ sessionId: 'session-1', line: '/mem-readonly read-only' }])
+    await expect(face.setReadOnly(false)).resolves.toBeNull()
+    expect(calls[1]).toEqual({ sessionId: 'session-1', line: '/mem-readonly read-write' })
+    fail()
+    await expect(face.setReadOnly(true)).resolves.toBe('refused (DENIED)')
+  })
 })
