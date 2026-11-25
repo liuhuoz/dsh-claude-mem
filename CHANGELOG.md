@@ -4,6 +4,10 @@ Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), sta
 
 ## Unreleased
 
+### Added
+
+- A per-session read-only memory mode: the session keeps reading memory (search, context injection, the read tools) but writes none of it back — no session row, no observations, no turn summary, no delegated-run archive. The mode is one `claude-mem/read-only` session event folded by a `memReadOnly` projection, switched from four seats (composer row, session header, New Session row, dock pill) or with `/mem-readonly`, and it survives restarts and archives.
+
 ### Changed
 
 - The viewer and repository links moved from the overview tab's footer to the right of the tab strip, so every tab shows them.
