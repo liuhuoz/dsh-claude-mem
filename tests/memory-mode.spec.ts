@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { applyMemoryHooks } from '../src/hooks.ts'
 import {
-  OPEN_MODE, READ_ONLY_EVENT, READ_ONLY_PROJECTION, attachMemoryMode, foldReadOnly,
+  COMMAND_RUN_EVENT, OPEN_MODE, READ_ONLY_COMMAND, READ_ONLY_PROJECTION, attachMemoryMode, foldReadOnly,
   ownerSessionId, parseModeArgument, readOnlyOf, type MemoryMode,
 } from '../src/memory-mode.ts'
 import type { LiveSettings } from '../src/settings.ts'
@@ -57,19 +57,32 @@ function fakeContext(values: Record<string, unknown> = {}) {
 }
 
 describe('foldReadOnly', () => {
+  const run = (name: unknown, args?: unknown) => ({ type: COMMAND_RUN_EVENT, data: { name, args } })
+
   it('ignores every other event', () => {
     expect(foldReadOnly(true, { type: 'user/message', data: {} })).toBe(true)
     expect(foldReadOnly(false, { type: 'turn/end', data: {} })).toBe(false)
   })
 
-  it('takes the whole value the event carries', () => {
-    expect(foldReadOnly(false, { type: READ_ONLY_EVENT, data: { enabled: true } })).toBe(true)
-    expect(foldReadOnly(true, { type: READ_ONLY_EVENT, data: { enabled: false } })).toBe(false)
+  it('ignores a command of another name', () => {
+    expect(foldReadOnly(true, run('permission', ' auto'))).toBe(true)
+    expect(foldReadOnly(false, run('mem-search', 'read-only'))).toBe(false)
   })
 
-  it('treats a malformed payload as off', () => {
-    expect(foldReadOnly(true, { type: READ_ONLY_EVENT, data: { enabled: 'yes' } })).toBe(false)
-    expect(foldReadOnly(true, { type: READ_ONLY_EVENT, data: undefined })).toBe(false)
+  it('takes an explicit argument as the whole value', () => {
+    expect(foldReadOnly(false, run(READ_ONLY_COMMAND, ' read-only'))).toBe(true)
+    expect(foldReadOnly(true, run(READ_ONLY_COMMAND, 'read-write'))).toBe(false)
+    expect(foldReadOnly(false, run(READ_ONLY_COMMAND, 'off'))).toBe(false)
+  })
+
+  it('flips on a bare command, which carries no argument', () => {
+    expect(foldReadOnly(false, run(READ_ONLY_COMMAND, ''))).toBe(true)
+    expect(foldReadOnly(true, run(READ_ONLY_COMMAND))).toBe(false)
+  })
+
+  it('keeps the state for an argument it does not understand', () => {
+    expect(foldReadOnly(true, run(READ_ONLY_COMMAND, 'maybe'))).toBe(true)
+    expect(foldReadOnly(false, { type: COMMAND_RUN_EVENT, data: undefined })).toBe(false)
   })
 })
 
@@ -136,26 +149,29 @@ describe('attachMemoryMode', () => {
       wire: { summary: boolean, view: (state: boolean) => boolean },
     }
     expect(unit.key).toBe(READ_ONLY_PROJECTION)
-    expect(unit.stateVersion).toBe(1)
+    expect(unit.stateVersion).toBe(2)
     expect(unit.init()).toBe(false)
-    expect(unit.apply(false, { type: READ_ONLY_EVENT, data: { enabled: true } })).toBe(true)
+    expect(unit.apply(false, { type: COMMAND_RUN_EVENT, data: { name: READ_ONLY_COMMAND, args: ' read-only' } })).toBe(true)
+    expect(unit.apply(true, { type: 'user/message', data: {} })).toBe(true)
     expect(unit.wire.summary).toBe(false)
     expect(unit.wire.view(true)).toBe(true)
   })
 
-  it('registers the command that appends the event', () => {
+  it('registers a command that appends no session event', () => {
     const { ctx, command } = fakeContext()
     attachMemoryMode(ctx)
     const definition = command.mock.calls[0]?.[0] as {
       name: string
       handler: (invocation: { agent: unknown, rawInput: string }) => { kind: string, text?: string }
     }
-    expect(definition.name).toBe('mem-readonly')
+    expect(definition.name).toBe(READ_ONLY_COMMAND)
     const append = vi.fn()
     const agent = { session: { id: 'session-1', append } }
     const result = definition.handler({ agent, rawInput: 'read-only' })
     expect(result.kind).toBe('success')
-    expect(append).toHaveBeenCalledWith(READ_ONLY_EVENT, { enabled: true })
+    expect(result.text).toContain('on')
+    // A custom session event type would lock the session out of its own history.
+    expect(append).not.toHaveBeenCalled()
   })
 
   it('refuses an argument it does not understand', () => {
@@ -174,11 +190,12 @@ describe('attachMemoryMode', () => {
     const { ctx, command } = fakeContext({ [READ_ONLY_PROJECTION]: true })
     attachMemoryMode(ctx)
     const definition = command.mock.calls[0]?.[0] as {
-      handler: (invocation: { agent: unknown, rawInput: string }) => { kind: string }
+      handler: (invocation: { agent: unknown, rawInput: string }) => { kind: string, text?: string }
     }
     const append = vi.fn()
-    definition.handler({ agent: { session: { id: 'session-1', append } }, rawInput: '' })
-    expect(append).toHaveBeenCalledWith(READ_ONLY_EVENT, { enabled: false })
+    const result = definition.handler({ agent: { session: { id: 'session-1', append } }, rawInput: '' })
+    expect(result.text).toContain('off')
+    expect(append).not.toHaveBeenCalled()
   })
 
   it('swallows the handle promise 0.2.2 hands back', async () => {

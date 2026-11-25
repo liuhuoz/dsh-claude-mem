@@ -3,11 +3,17 @@
  *
  * A session can read project memory — search, context injection, the read
  * tools — while writing nothing back: no session row, no observations, no turn
- * summary, no delegated-run archive. The mode is session state and the session
- * log is its store: one `claude-mem/read-only` event carries the whole current
- * value, and a projection folds the last one. That keeps the switch durable
- * across a restart, per session by construction, and out of the model
- * transcript.
+ * summary, no delegated-run archive.
+ *
+ * The mode is derived from an event the host writes by itself: running
+ * `/mem-readonly` commits a `command/run` record carrying the command's name
+ * and argument, and the `memReadOnly` projection folds the last such record.
+ * That keeps the switch durable across a restart, per session by construction,
+ * and out of the model transcript, without appending anything here. A custom
+ * event type is not an option: the harness reopens a stored log only when every
+ * event is a type it knows or the envelope carries `ignorable: true`, and
+ * `Session.append()` cannot set that marker, so a custom type locks the session
+ * out of its own history.
  *
  * The fold is read through `sessionProjections.snapshot()`, which the 0.2.1 and
  * 0.2.2 host lines expose with the same shape. `register()` returns a different
@@ -24,17 +30,6 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import { z } from 'zod'
 
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /**
-     * The session's memory write mode was switched. Log-only — durable and
-     * replayable, never part of the model transcript. The LAST such event is
-     * the session's mode; the `memReadOnly` projection folds it.
-     */
-    'claude-mem/read-only': { enabled: boolean }
-  }
-}
-
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     /** The session writes nothing back to memory while this is true. */
@@ -42,8 +37,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
-/** The session event that carries the whole current mode. */
-export const READ_ONLY_EVENT = 'claude-mem/read-only'
+/** The durable record the host writes for every executed command. */
+export const COMMAND_RUN_EVENT = 'command/run'
 
 /** The projection key both halves read the mode from. */
 export const READ_ONLY_PROJECTION = 'memReadOnly'
@@ -52,7 +47,7 @@ export const READ_ONLY_PROJECTION = 'memReadOnly'
 export const READ_ONLY_COMMAND = 'mem-readonly'
 
 /** Bumped when the fold's meaning changes; persisted rows from older units are dropped. */
-const STATE_VERSION = 1
+const STATE_VERSION = 2
 
 /** What every consumer needs from the mode. */
 export interface MemoryMode {
@@ -86,11 +81,17 @@ export function ownerSessionId(session: Session): string {
 
 /**
  * Fold one committed event into the mode. Every other event leaves the state
- * alone.
+ * alone. The host records the command's argument, so an explicit
+ * `read-only`/`read-write` sets the value even when the frame that drives the
+ * switch read a stale projection; a bare `/mem-readonly` carries no argument and
+ * flips the value the log already agrees on.
  */
 export function foldReadOnly(state: boolean, event: { type: string; data?: unknown }): boolean {
-  if (event.type !== READ_ONLY_EVENT) return state
-  return (event.data as { enabled?: unknown } | undefined)?.enabled === true
+  if (event.type !== COMMAND_RUN_EVENT) return state
+  const data = event.data as { name?: unknown; args?: unknown } | undefined
+  if (data?.name !== READ_ONLY_COMMAND) return state
+  const argument = typeof data.args === 'string' ? data.args : ''
+  return parseModeArgument(argument, state) ?? state
 }
 
 /**
@@ -165,7 +166,9 @@ function registerCommand(ctx: Context): void {
         if (enabled === undefined) {
           return { kind: 'error', text: `usage: /${READ_ONLY_COMMAND} [read-only|read-write]` }
         }
-        agent.session.append(READ_ONLY_EVENT, { enabled })
+        // The host commits this command as a `command/run` record before the
+        // handler runs; the projection folds that record. Appending a session
+        // event here would write a type the harness cannot reopen.
         return {
           kind: 'success',
           text: enabled
@@ -175,7 +178,7 @@ function registerCommand(ctx: Context): void {
       },
     })
   } catch {
-    // No command service: the mode is then only switchable by another writer of the event.
+    // No command service: the mode is then only switchable by another writer of the command.
   }
 }
 
