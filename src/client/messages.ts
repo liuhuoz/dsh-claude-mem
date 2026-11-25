@@ -133,6 +133,13 @@ export const en = {
   probeNotWorker: 'Something answered, but it is not the claude-mem worker',
   probeUnreachable: 'Could not reach the worker (not running, or the wrong port)',
   unavailable: 'This page is unavailable until the plugin configuration loads.',
+  readonlyOn: 'Read-only memory',
+  readonlyOff: 'Read-write memory',
+  readonlyShortOn: 'Read-only',
+  readonlyShortOff: 'Writable',
+  readonlySwitch: 'Read-only memory',
+  readonlyTitle: 'This session reads project memory and writes none of it back. Click to switch.',
+  readonlyFailed: 'Could not switch: {reason}',
 } as const
 
 /** Keys the page renders. */
@@ -264,6 +271,13 @@ export const zh: Record<MessageKey, string> = {
   probeNotWorker: '有服务在响应，但不是 claude-mem worker',
   probeUnreachable: '连不上 worker（未启动，或端口不对）',
   unavailable: '插件配置加载完成前此页不可用。',
+  readonlyOn: '记忆只读',
+  readonlyOff: '记忆读写',
+  readonlyShortOn: '只读',
+  readonlyShortOff: '读写',
+  readonlySwitch: '只读记忆',
+  readonlyTitle: '本会话读项目记忆，但不写回任何记忆。点一下切换。',
+  readonlyFailed: '切换失败：{reason}',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
