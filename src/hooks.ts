@@ -22,6 +22,7 @@ import { basename, resolve } from 'node:path'
 import type { WorkerClient } from './worker.js'
 import { DSH_PLATFORM, type LiveSettings } from './settings.js'
 import type { MemObservationIngest } from './types.js'
+import { OPEN_MODE, type MemoryMode } from './memory-mode.js'
 
 /** Read current settings; called wherever a value is used, never once at startup. */
 export type SettingsSource = () => LiveSettings
@@ -549,8 +550,16 @@ export async function injectSessionContext(
   }
 }
 
-/** Attach the memory lifecycle hooks to their extension points. */
-export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings: SettingsSource): void {
+/**
+ * Attach the memory lifecycle hooks to their extension points.
+ * @param mode - per-session read-only mode; a read-only session writes nothing back.
+ */
+export function applyMemoryHooks(
+  ctx: Context,
+  worker: WorkerClient,
+  getSettings: SettingsSource,
+  mode: MemoryMode = OPEN_MODE,
+): void {
   ensureWorkerStarted(getSettings())
 
   const on = ctx.on.bind(ctx) as unknown as OnAny
@@ -578,6 +587,9 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
   const pendingInjections = new Map<string, PendingInjection>()
 
   const debug = debugLogger(ctx)
+
+  /** Read-only state of the session that owns a write, resolved through the live agents. */
+  const isReadOnly = (sessionId: string): boolean => mode.isReadOnly(agents.get(sessionId)?.session)
 
   /** One file's memory, shared by the read gate and the block that follows it. */
   const fileMemory = new FileMemoryLookup(worker)
@@ -607,6 +619,8 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     const identity = subagents.get(agent.session.id)
     if (identity === undefined) return
     subagents.delete(agent.session.id)
+    // A run started from a read-only session leaves no archive entry either.
+    if (isReadOnly(identity.parentSessionId)) return
     // A disposed run normally already reached `subagent/end`; this path covers a
     // run that vanished without one and has no closing message.
     archiveOnce(archived, agent.session.id, () => {
@@ -641,6 +655,8 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     if (identity === undefined) return
     const child = agents.get(childId)
     subagents.delete(childId)
+    // A run started from a read-only session leaves no archive entry either.
+    if (isReadOnly(identity.parentSessionId)) return
     archiveOnce(archived, childId, () => {
       recordSubagentStop(
         worker,
@@ -669,7 +685,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
     // Session registration and prompt capture are not optional: the row is what
     // gives an observation its context, and claude-mem exposes no switch for it
     // either. Only observation and summarization are switchable, here and there.
-    recordPrompt(worker, payload.agent, payload.messages, getSettings())
+    if (!mode.isReadOnly(payload.agent.session)) recordPrompt(worker, payload.agent, payload.messages, getSettings())
     const typed = promptText(payload.messages)
     if (typed.length > 0) lastPrompt.set(payload.agent.session.id, typed)
     const decision = await next()
@@ -687,7 +703,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   ctx.on('tools/post-execute', (exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>) => {
     const settings = getSettings()
-    if (settings.ingest) observeToolResult(worker, exec, result, settings, subagents)
+    if (settings.ingest) observeToolResult(worker, exec, result, settings, subagents, isReadOnly)
     return next()
   })
 
@@ -701,7 +717,7 @@ export function applyMemoryHooks(ctx: Context, worker: WorkerClient, getSettings
 
   on('agent/turn-stopping', (payload: { agent: Agent }) => {
     const settings = getSettings()
-    if (settings.summarize) void summarizeSession(worker, payload.agent, settings)
+    if (settings.summarize && !mode.isReadOnly(payload.agent.session)) void summarizeSession(worker, payload.agent, settings)
   })
 }
 
@@ -711,6 +727,7 @@ function observeToolResult(
   result: Readonly<ToolExecutionResult>,
   settings: LiveSettings,
   subagents: Map<string, SubagentIdentity>,
+  isReadOnly: (sessionId: string) => boolean,
 ): void {
   if (!settings.toolFilter.names.includes(exec.name)) return
   const agent = exec.agent
@@ -724,7 +741,10 @@ function observeToolResult(
   // result; when the call produced no body of its own the error message is it.
   const body = text.length > 0 ? text : result.isError ? result.error.message.trim() : ''
   if (body.length === 0) return
-  recordToolUse(worker, exec, agent, body, settings, attributionOf(agent, subagents), result.isError)
+  // A delegated run writes under its parent's name, so the parent's mode decides.
+  const attribution = attributionOf(agent, subagents)
+  if (isReadOnly(attribution.sessionId)) return
+  recordToolUse(worker, exec, agent, body, settings, attribution, result.isError)
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
