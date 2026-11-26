@@ -95,10 +95,26 @@ const layout = {
   cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', boxSizing: 'border-box', margin: 0, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' } as const,
   chevron: { fontSize: 10, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
   advancedBody: { display: 'flex', flexDirection: 'column', gap: 14 } as const,
-  /** The one dropdown on the page: the in-session seat choice. */
-  select: { font: 'inherit', fontSize: 12, lineHeight: '18px', padding: '3px 6px', borderRadius: 6, border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)', color: 'inherit' } as const,
+  /** The one dropdown on the page: the card's own surface, edge and radius. */
+  selectWrap: { position: 'relative', display: 'inline-flex', alignItems: 'center' } as const,
+  select: {
+    appearance: 'none',
+    font: 'inherit',
+    fontSize: 12.5,
+    lineHeight: '18px',
+    height: 28,
+    padding: '0 24px 0 9px',
+    borderRadius: 8,
+    border: '1px solid var(--dsw-alias-border-l1)',
+    background: 'var(--dsw-alias-bg-layer-1)',
+    color: 'var(--dsw-alias-label-primary)',
+    cursor: 'pointer',
+  } as const,
+  selectCaret: { position: 'absolute', right: 8, pointerEvents: 'none', fontSize: 9, lineHeight: '10px', color: 'var(--dsw-alias-label-tertiary)' } as const,
   /** Pinned to the bottom edge of the scrollport, so a save is always in reach. */
   saveBar: { position: 'sticky', bottom: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, boxSizing: 'border-box', padding: '8px 12px', background: 'var(--dsw-alias-bg-layer-1)', border: '1px solid var(--dsw-alias-border-l2)', borderRadius: 10 } as const,
+  /** Left of the save bar: a draft is not accepted until the button is pressed. */
+  saveHint: { fontSize: 12.5, lineHeight: '18px', color: 'var(--dsw-alias-label-tertiary)' } as const,
 } as const
 
 function toolNamesOf(value: Record<string, unknown>): string[] {
@@ -477,16 +493,19 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
             <span style={layout.toggleTitle}>{t('sessionSeat')}</span>
             <span style={layout.hint}>{t('sessionSeatHint')}</span>
           </div>
-          <select
-            style={layout.select}
-            value={draft.sessionSeat}
-            disabled={!writable}
-            onChange={event => update('sessionSeat', event.target.value as SessionSeat)}
-          >
-            {SESSION_SEATS.map(seat => (
-              <option key={seat} value={seat}>{t(SEAT_LABELS[seat])}</option>
-            ))}
-          </select>
+          <span style={layout.selectWrap}>
+            <select
+              style={layout.select}
+              value={draft.sessionSeat}
+              disabled={!writable}
+              onChange={event => update('sessionSeat', event.target.value as SessionSeat)}
+            >
+              {SESSION_SEATS.map(seat => (
+                <option key={seat} value={seat}>{t(SEAT_LABELS[seat])}</option>
+              ))}
+            </select>
+            <span style={layout.selectCaret} aria-hidden="true">▾</span>
+          </span>
         </div>
         <div style={layout.toggle}>
           <div style={layout.toggleText}>
@@ -541,7 +560,8 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
       </section>
 
       <footer style={layout.saveBar}>
-        <span style={layout.hint}>{notice}</span>
+        {/* The hint and the result share one slot beside the button, so a save replaces the reminder. */}
+        <span style={layout.saveHint}>{notice ?? t('saveHint')}</span>
         <Button variant="primary" size="sm" disabled={saving || !writable} onClick={save}>
           {saving ? t('saving') : t('save')}
         </Button>
