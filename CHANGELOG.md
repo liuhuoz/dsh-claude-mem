@@ -2,19 +2,22 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
-## Unreleased
+## 1.3.0
 
 ### Added
 
-- A per-session read-only memory mode: the session keeps reading memory (search, context injection, the read tools) but writes none of it back — no session row, no observations, no turn summary, no delegated-run archive. The mode is derived from the `/mem-readonly` record the session log already keeps, folded by a `memReadOnly` projection, switched from four seats (composer row, session header, New Session row, dock pill) or with `/mem-readonly`, and it survives restarts and archives.
+- A per-session read-only memory mode: the session keeps reading memory (search, context injection, the read tools) but writes none of it back — no session row, no observations, no turn summary, no delegated-run archive. The mode is derived from the `/mem-readonly` record the session log already keeps, folded by a `memReadOnly` projection, switched from the seat the plugin settings choose or with `/mem-readonly`, and it survives restarts and archives.
+- The settings page chooses where that control appears: one in-session position (composer tool row, session header, dock row, or off) plus a separate switch for the New Session page. A saved choice moves the control without a reload, and every hint on the page was shortened.
 
 ### Changed
 
 - The viewer and repository links moved from the overview tab's footer to the right of the tab strip, so every tab shows them.
+- The read-only control follows the panel's card system: the composer keeps a light-outline pill, the header and dock rows drop to a dot and a word, and the settings dropdown matches the card's surface and edge.
 
 ### Fixed
 
 - A session that switched its memory mode can reopen again. The mode used to be written as a `claude-mem/read-only` session event; the harness accepts an unknown stored event only when its envelope carries `ignorable: true`, which `Session.append()` cannot set, so every session that had toggled the switch refused to load its own history ("unknown to this harness and not marked ignorable"). The mode now folds the `command/run` record the host writes for `/mem-readonly`, and nothing appends a custom event type.
+- A delegated run started from a read-only session no longer writes by itself: the write guard and the turn summary resolve the parent session's mode instead of the child's.
 
 ## 1.2.0
 
