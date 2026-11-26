@@ -12,7 +12,8 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": false,
     "rootDir": "src",
-    "outDir": "lib/types",
+    "outDir": ".build/js",
+    "declarationDir": "lib/types",
     "declaration": true,
     "declarationMap": false,
     "sourceMap": false

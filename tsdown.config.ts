@@ -3,7 +3,7 @@ import { defineConfig } from 'tsdown'
 /**
  * Two bundles from one package.
  *
- * The host bundle is self-contained: `lib/types/*.js` (emitted by `tsc`) is
+ * The host bundle is self-contained: `.build/js/*.js` (emitted by `tsc`) is
  * bundled into `lib/index.js` with no workspace globs, project references, or
  * monorepo plugins, so the package installs from a git clone.
  *
@@ -13,7 +13,7 @@ import { defineConfig } from 'tsdown'
  */
 export default defineConfig([
   {
-    entry: ['lib/types/index.js'],
+    entry: ['./.build/js/index.js'],
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',

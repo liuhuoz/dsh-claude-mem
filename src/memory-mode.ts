@@ -1,0 +1,194 @@
+/**
+ * Per-session read-only memory mode.
+ *
+ * A session can read project memory — search, context injection, the read
+ * tools — while writing nothing back: no session row, no observations, no turn
+ * summary, no delegated-run archive.
+ *
+ * The mode is derived from an event the host writes by itself: running
+ * `/mem-readonly` commits a `command/run` record carrying the command's name
+ * and argument, and the `memReadOnly` projection folds the last such record.
+ * That keeps the switch durable across a restart, per session by construction,
+ * and out of the model transcript, without appending anything here. A custom
+ * event type is not an option: the harness reopens a stored log only when every
+ * event is a type it knows or the envelope carries `ignorable: true`, and
+ * `Session.append()` cannot set that marker, so a custom type locks the session
+ * out of its own history.
+ *
+ * The fold is read through `sessionProjections.snapshot()`, which the 0.2.1 and
+ * 0.2.2 host lines expose with the same shape. `register()` returns a different
+ * value on each of those lines (a disposer, then a handle promise), so its
+ * return value is ignored and nothing depends on it. A projection that cannot
+ * be read means read-write: recording must never stop because a switch could
+ * not be read.
+ * @module dsh-claude-mem/memory-mode
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-session-projection'
+import { z } from 'zod'
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /** The session writes nothing back to memory while this is true. */
+    memReadOnly: boolean
+  }
+}
+
+/** The durable record the host writes for every executed command. */
+export const COMMAND_RUN_EVENT = 'command/run'
+
+/** The projection key both halves read the mode from. */
+export const READ_ONLY_PROJECTION = 'memReadOnly'
+
+/** The slash command that switches the mode. */
+export const READ_ONLY_COMMAND = 'mem-readonly'
+
+/** Bumped when the fold's meaning changes; persisted rows from older units are dropped. */
+const STATE_VERSION = 2
+
+/** What every consumer needs from the mode. */
+export interface MemoryMode {
+  /** True when this session writes nothing back to memory. */
+  isReadOnly(session: Session | undefined): boolean
+}
+
+/** The mode before the projection service mounts: nothing is read-only. */
+export const OPEN_MODE: MemoryMode = { isReadOnly: () => false }
+
+/** Session header fields the ownership decision reads; the published type is narrower. */
+interface DelegationHeader {
+  readonly origin?: string
+  readonly parentSessionId?: string
+  readonly delegationDepth?: number
+}
+
+/**
+ * The session a write belongs to: a delegated run files under its parent.
+ * Mirrors the attribution the capture hooks apply to observations.
+ * @param session - the session the write was issued from.
+ * @returns the owning session id, which is the same session for ordinary runs.
+ */
+export function ownerSessionId(session: Session): string {
+  const header = session.header as unknown as DelegationHeader
+  const delegated = header.origin === 'subagent' || (header.delegationDepth ?? 0) > 0
+  return delegated && typeof header.parentSessionId === 'string' && header.parentSessionId.length > 0
+    ? header.parentSessionId
+    : session.id
+}
+
+/**
+ * Fold one committed event into the mode. Every other event leaves the state
+ * alone. The host records the command's argument, so an explicit
+ * `read-only`/`read-write` sets the value even when the frame that drives the
+ * switch read a stale projection; a bare `/mem-readonly` carries no argument and
+ * flips the value the log already agrees on.
+ */
+export function foldReadOnly(state: boolean, event: { type: string; data?: unknown }): boolean {
+  if (event.type !== COMMAND_RUN_EVENT) return state
+  const data = event.data as { name?: unknown; args?: unknown } | undefined
+  if (data?.name !== READ_ONLY_COMMAND) return state
+  const argument = typeof data.args === 'string' ? data.args : ''
+  return parseModeArgument(argument, state) ?? state
+}
+
+/**
+ * Parse the command's argument.
+ * @param raw - exact text after the command name.
+ * @param current - the session's mode now, which an empty argument flips.
+ * @returns the mode to write, or undefined when the argument is not understood.
+ */
+export function parseModeArgument(raw: string, current: boolean): boolean | undefined {
+  const value = raw.trim().toLowerCase()
+  if (value.length === 0) return !current
+  if (value === 'read-only' || value === 'readonly' || value === 'on') return true
+  if (value === 'read-write' || value === 'readwrite' || value === 'off') return false
+  return undefined
+}
+
+let warned = false
+
+/** Read one session's mode; an unreadable projection is read-write. */
+export function readOnlyOf(ctx: Context, session: Session | undefined): boolean {
+  if (session === undefined) return false
+  try {
+    const values = ctx.sessionProjections.snapshot(session, [READ_ONLY_PROJECTION]).values
+    return values[READ_ONLY_PROJECTION] === true
+  } catch (error: unknown) {
+    if (!warned) {
+      warned = true
+      try {
+        ctx.logger?.warn?.(`[claude-mem] read-only mode is unreadable: ${String(error)}`)
+      } catch {
+        // Logging must never change a capture decision.
+      }
+    }
+    return false
+  }
+}
+
+/** Register the projection; the fiber owns it, so its return value is not kept. */
+function registerProjection(ctx: Context): void {
+  try {
+    const registered: unknown = ctx.sessionProjections.register({
+      key: READ_ONLY_PROJECTION,
+      stateVersion: STATE_VERSION,
+      stateSchema: z.boolean(),
+      init: () => false,
+      apply: (state, event) => foldReadOnly(state, event),
+      wire: {
+        viewSchema: z.boolean(),
+        view: (state) => state,
+        // The mode matters inside its session, never in a list row.
+        summary: false,
+      },
+    })
+    // 0.2.2 yields a handle promise; swallowing it keeps an unhandled rejection out of the host.
+    if (registered !== null && typeof registered === 'object' && typeof (registered as { then?: unknown }).then === 'function') {
+      void Promise.resolve(registered as Promise<unknown>).catch(() => {})
+    }
+  } catch {
+    // Without the unit the mode stays open, which is what a host without the service gets anyway.
+  }
+}
+
+/** Register the slash command that switches the mode. */
+function registerCommand(ctx: Context): void {
+  try {
+    ctx.commands.register({
+      name: READ_ONLY_COMMAND,
+      description: 'MemReadOnly — this session reads project memory but writes nothing back: no observations, no summaries, no delegated-run archives. No argument toggles the mode.',
+      input: { hint: 'read-only | read-write' },
+      handler: ({ agent, rawInput }) => {
+        const enabled = parseModeArgument(rawInput, readOnlyOf(ctx, agent.session))
+        if (enabled === undefined) {
+          return { kind: 'error', text: `usage: /${READ_ONLY_COMMAND} [read-only|read-write]` }
+        }
+        // The host commits this command as a `command/run` record before the
+        // handler runs; the projection folds that record. Appending a session
+        // event here would write a type the harness cannot reopen.
+        return {
+          kind: 'success',
+          text: enabled
+            ? 'MemReadOnly on: this session writes nothing to memory.'
+            : 'MemReadOnly off: this session records memory again.',
+        }
+      },
+    })
+  } catch {
+    // No command service: the mode is then only switchable by another writer of the command.
+  }
+}
+
+/**
+ * Attach the mode to a context that serves the projection and command services.
+ * @param ctx - a context that reached both services.
+ * @returns the reader every capture path consults.
+ */
+export function attachMemoryMode(ctx: Context): MemoryMode {
+  registerProjection(ctx)
+  registerCommand(ctx)
+  return { isReadOnly: (session) => readOnlyOf(ctx, session) }
+}

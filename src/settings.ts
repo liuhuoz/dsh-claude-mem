@@ -10,6 +10,12 @@
  * @module dsh-claude-mem/settings
  */
 
+/** The in-session seats the read-only control can occupy; `none` hides it. */
+export const SESSION_SEATS = ['composer', 'header', 'dock', 'none'] as const
+
+/** One in-session seat choice. */
+export type SessionSeat = (typeof SESSION_SEATS)[number]
+
 /** Plain, resolved settings: what the rest of the plugin consumes. */
 export interface LiveSettings {
   readonly baseUrl: string
@@ -31,6 +37,9 @@ export interface LiveSettings {
   readonly dedupe: boolean
   /** The left-sidebar entry switch; off until the user turns it on. */
   readonly sidebarEntry: boolean
+  /** Where the read-only control appears; a seat switched off is not registered. */
+  readonly sessionSeat: SessionSeat
+  readonly seatHero: boolean
 }
 
 /** Defaults mirroring the schema; used when a host hands over an empty config. */
@@ -51,6 +60,8 @@ const DEFAULTS = {
   timeoutMs: 30_000,
   dedupe: true,
   sidebarEntry: false,
+  sessionSeat: 'composer',
+  seatHero: true,
 } as const
 
 /**
@@ -91,6 +102,14 @@ function readText(value: unknown, fallback: string): string {
 function readFlag(value: unknown, fallback: boolean): boolean {
   const flag = read<unknown>(value, fallback)
   return typeof flag === 'boolean' ? flag : fallback
+}
+
+/** Read one in-session seat choice; an unknown value falls back. */
+function readSeat(value: unknown, fallback: SessionSeat): SessionSeat {
+  const current = read<unknown>(value, fallback)
+  return typeof current === 'string' && (SESSION_SEATS as readonly string[]).includes(current)
+    ? current as SessionSeat
+    : fallback
 }
 
 function readStringList(value: unknown, fallback: readonly string[]): readonly string[] {
@@ -136,5 +155,7 @@ export function resolveSettings(raw: unknown): LiveSettings {
     timeoutMs: read<number>(source.timeoutMs, DEFAULTS.timeoutMs),
     dedupe: readFlag(source.dedupe, DEFAULTS.dedupe),
     sidebarEntry: readFlag(source.sidebarEntry, DEFAULTS.sidebarEntry),
+    sessionSeat: readSeat(source.sessionSeat, DEFAULTS.sessionSeat),
+    seatHero: readFlag(source.seatHero, DEFAULTS.seatHero),
   }
 }

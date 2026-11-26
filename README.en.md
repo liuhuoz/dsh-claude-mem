@@ -94,3 +94,16 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Observed tools | Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list (advanced). |
 | File-context tools | Only used while “Bring memory into file reads” is on. Comma-separated; the default is `read`. `ops_bash` / `pwsh` are scanned for files and must be added explicitly; `grep` / `glob` are not supported yet. |
 
+## Read-only memory
+
+A session can read memory and still write none of it back: search and context injection work as usual, while the session creates no memory row, records no tool observations, writes no turn summary and archives no delegated run. That suits a throwaway session you do not want remembered.
+
+The switch lives in four places and they stay in sync: the composer tool row, the session header (which doubles as the state reminder), the New Session row right of the workspace and preset dropdowns, and the pill row under the composer. The command does the same:
+
+| Command | Effect |
+|---|---|
+| `/mem-readonly` | Toggle between read-only and read-write |
+| `/mem-readonly read-only` | Read-only (same as `on`) |
+| `/mem-readonly read-write` | Record again (same as `off`) |
+
+The mode belongs to the session and is stored in its own log, so it survives a restart and a re-opened archive; a new session always starts read-write.

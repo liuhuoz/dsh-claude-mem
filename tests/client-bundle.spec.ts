@@ -158,4 +158,101 @@ describe('client bundle', () => {
     const registrations = applyWithScope(undefined, false)
     expect(registrations.map(options => options.name)).toEqual(['plugins.row.config'])
   })
+
+  /** Apply the bundle against a shell that serves the command channel. */
+  const applyWithModeSeats = (value?: Record<string, unknown>) => {
+    const exports = entry!.factory(requireStub)
+    const registrations: Array<Record<string, unknown>> = []
+    const calls: Array<{ sessionId: string; line: string }> = []
+    let answer: { ok: boolean; value?: unknown; error?: { message: string; code: string } } = { ok: true, value: { kind: 'success' } }
+    const dispose = () => () => {}
+    const slots = {
+      // The shell's seat gate: the inner registration lives exactly as long as
+      // this disposer, which is what a seat switched off in the configuration uses.
+      inject: (_slot: string, factory: () => unknown) => {
+        const inner = factory()
+        return () => {
+          if (typeof inner === 'function') inner()
+        }
+      },
+      register: (options: Record<string, unknown>, component: unknown) => {
+        registrations.push(options)
+        expect(typeof component).toBe('function')
+        return () => {
+          const at = registrations.indexOf(options)
+          if (at >= 0) registrations.splice(at, 1)
+        }
+      },
+    }
+    const remote = {
+      commands: {
+        execute: async (sessionId: string, line: string) => {
+          calls.push({ sessionId, line })
+          return answer
+        },
+      },
+    }
+    const configForms = {
+      get: () => value === undefined
+        ? undefined
+        : { getSnapshot: () => ({ value }), subscribe: () => dispose() },
+    }
+    const ctx = {
+      effect: (factory: () => unknown) => {
+        factory()
+        return dispose()
+      },
+      locale: { register: dispose },
+      slots,
+      inject: (deps: string[], run: (inner: unknown) => unknown) => {
+        run(deps.includes('configForms') ? { slots, remote, configForms } : { slots, remote })
+        return dispose()
+      },
+    }
+    ;(exports.apply as (ctx: unknown) => void)(ctx)
+    return { registrations, calls, fail: () => { answer = { ok: false, error: { message: 'refused', code: 'DENIED' } } } }
+  }
+
+  it.skipIf(entry === undefined)('mounts the read-only control at four seats', () => {
+    const { registrations } = applyWithModeSeats()
+    const seats = registrations.filter(options => String(options.name ?? '').startsWith('conversation.'))
+    expect(seats.map(options => options.name)).toEqual([
+      'conversation.input.left',
+      'conversation.session.header.actions',
+      'conversation.composer.dock',
+      'conversation.hero.options',
+    ])
+    for (const seat of seats) {
+      expect(seat).toMatchObject({ id: 'dsh-claude-mem-readonly', locale: 'dsh-claude-mem' })
+      expect(typeof seat.inject).toBe('function')
+    }
+  })
+
+  it.skipIf(entry === undefined)('mounts only the seat the configuration chose', () => {
+    const { registrations } = applyWithModeSeats({ sessionSeat: 'header' })
+    const seats = registrations.filter(options => String(options.name ?? '').startsWith('conversation.'))
+    expect(seats.map(options => options.name)).toEqual([
+      'conversation.session.header.actions',
+      'conversation.hero.options',
+    ])
+  })
+
+  it.skipIf(entry === undefined)('hides every in-session seat on the off choice', () => {
+    const { registrations } = applyWithModeSeats({ sessionSeat: 'none' })
+    const seats = registrations.filter(options => String(options.name ?? '').startsWith('conversation.'))
+    expect(seats.map(options => options.name)).toEqual(['conversation.hero.options'])
+  })
+
+  it.skipIf(entry === undefined)('switches the mode through the host command', async () => {
+    const { registrations, calls, fail } = applyWithModeSeats()
+    const option = registrations.find(options => options.name === 'conversation.hero.options')!
+    const face = (option.inject as (id: string) => { variant: string; setReadOnly: (on: boolean) => Promise<string | null> })('session-1')
+    expect(face.variant).toBe('option')
+    await expect(face.setReadOnly(true)).resolves.toBeNull()
+    expect(calls).toEqual([{ sessionId: 'session-1', line: '/mem-readonly read-only' }])
+    await expect(face.setReadOnly(false)).resolves.toBeNull()
+    expect(calls[1]).toEqual({ sessionId: 'session-1', line: '/mem-readonly read-write' })
+    fail()
+    await expect(face.setReadOnly(true)).resolves.toBe('refused (DENIED)')
+  })
 })
