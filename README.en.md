@@ -19,6 +19,10 @@ English · [中文](README.md)
 - DSH ≥ 0.2.1-rc.2
 - [claude-mem](https://github.com/thedotmack/claude-mem) ≥ 15.17.0 (verified on 15.17.0 and 16.0.2), with `claude-mem` on `PATH`. The worker is started for you.
 
+## What's new
+
+A per-session read-only memory mode: the session keeps reading project memory and writes none of it back. Where its control appears is up to the settings page, and `/mem-readonly` switches it directly. (2026-11-26, v1.3.0)
+
 ## Install
 
 Install into the profile you actually run (DSH ships `desktop` and `web`):
@@ -91,19 +95,7 @@ Everything lives in the plugin's own page: **Plugins → dsh-claude-mem → Conf
 | Read code structurally through claude-mem | Adds `mem_smart_search` / `mem_smart_outline` / `mem_smart_unfold`: a file outline and single-symbol source instead of whole files. The model calls them when it wants structure; scoped to the working directory. |
 | Knowledge corpora | Adds the six `mem_corpus_*` tools: topic-scoped slices of memory you can ask questions about. |
 | Sidebar entry | Puts the panel behind a left-rail icon. With it off, **Plugins → dsh-claude-mem → Configure** still opens it (see Panel above). |
+| In-session control position | Where the read-only control appears inside a session: the composer tool row, the session header, the row under the composer, or Off (none of the three). Takes effect after saving. |
+| Show the control on the New Session page | Whether the control appears beside the New Session dropdowns. |
 | Observed tools | Only used while “Record tool calls as memory” is on. Comma-separated; leave empty for the built-in default list (advanced). |
 | File-context tools | Only used while “Bring memory into file reads” is on. Comma-separated; the default is `read`. `ops_bash` / `pwsh` are scanned for files and must be added explicitly; `grep` / `glob` are not supported yet. |
-
-## Read-only memory
-
-A session can read memory and still write none of it back: search and context injection work as usual, while the session creates no memory row, records no tool observations, writes no turn summary and archives no delegated run. That suits a throwaway session you do not want remembered.
-
-The switch lives in four places and they stay in sync: the composer tool row, the session header (which doubles as the state reminder), the New Session row right of the workspace and preset dropdowns, and the pill row under the composer. The command does the same:
-
-| Command | Effect |
-|---|---|
-| `/mem-readonly` | Toggle between read-only and read-write |
-| `/mem-readonly read-only` | Read-only (same as `on`) |
-| `/mem-readonly read-write` | Record again (same as `off`) |
-
-The mode belongs to the session and is stored in its own log, so it survives a restart and a re-opened archive; a new session always starts read-write.
