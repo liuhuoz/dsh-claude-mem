@@ -68,6 +68,18 @@ describe('readHealth', () => {
     expect(readHealth({ status: 'ok', mcpReady: false }).key).toBe('mcpUnavailable')
   })
 
+  it('warns when the worker reports MCP ready but the host finds no server', () => {
+    const reading = readHealth({ status: 'ok', mcpReady: true }, { available: false })
+    expect(reading.state).toBe('warning')
+    expect(reading.key).toBe('mcpUnavailable')
+  })
+
+  it('stays connected when the host found the server', () => {
+    const reading = readHealth({ status: 'ok' }, { available: true, serverPath: 'C:/cm/mcp-server.cjs' })
+    expect(reading.state).toBe('done')
+    expect(reading.key).toBe('connected')
+  })
+
   it('does not call a non-ok status connected', () => {
     const reading = readHealth({ status: 'degraded' })
     expect(reading.state).toBe('warning')

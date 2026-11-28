@@ -33,13 +33,14 @@ function installation(dir: string): string {
   return workerPath
 }
 
-function fakeWorker(health: { workerPath?: string }): WorkerClient {
+function fakeWorker(health: { workerPath?: string }, doctorPath?: string): WorkerClient {
   let calls = 0
   const worker = {
     health: async () => {
       calls += 1
       return { status: 'ok', ...health }
     },
+    workerScriptPath: async () => health.workerPath ?? doctorPath,
     get healthCalls() { return calls },
   }
   return worker as unknown as WorkerClient
@@ -84,6 +85,14 @@ describe('ClaudeMemMcp', () => {
     const dir = scratch()
     const workerPath = installation(dir)
     const mcp = new ClaudeMemMcp(fakeWorker({ workerPath }))
+    const result = await mcp.call('smart_outline', {}, { cwd: dir, timeoutMs: 10_000 })
+    expect(result.text).toBe('ok:smart_outline')
+  })
+
+  it('uses the install path the client resolved, not the health body alone', async () => {
+    const dir = scratch()
+    const workerPath = installation(dir)
+    const mcp = new ClaudeMemMcp(fakeWorker({}, workerPath))
     const result = await mcp.call('smart_outline', {}, { cwd: dir, timeoutMs: 10_000 })
     expect(result.text).toBe('ok:smart_outline')
   })

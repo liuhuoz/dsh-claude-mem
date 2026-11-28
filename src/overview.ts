@@ -19,6 +19,8 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import type { InjectionSection, Overview, OverviewOptions } from './overview-types.js'
 import { readDistributions } from './distributions.js'
+import { mcpClientReading } from './mcp-presence.js'
+import { parseHealth } from './probe.js'
 
 export type { Overview, OverviewOptions }
 
@@ -185,6 +187,13 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
     readSavings(options),
   ])
 
+  // Whether this host could launch the worker's MCP server is a separate answer
+  // from the worker's own `mcp.ready`, so it is looked up rather than read.
+  const mcpClient = await mcpClientReading(options.baseUrl, health.ok ? parseHealth(health.value) : undefined, {
+    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+    ...(options.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+  })
+
   const healthBody = health.ok ? record(health.value) : undefined
   const statsBody = stats.ok ? record(stats.value) : undefined
   const statsWorker = record(statsBody?.worker)
@@ -307,6 +316,7 @@ export async function buildOverview(options: OverviewOptions): Promise<Overview>
     database,
     processing: processingOut,
     mcp: mcpOut,
+    mcpClient,
     chroma: chromaOut,
     projects: projectsOut,
     recent: recentOut,

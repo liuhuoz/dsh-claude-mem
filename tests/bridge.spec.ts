@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { admissionRejection, allowedProbeOrigin } from '../src/bridge.js'
+import { mcpClientReading } from '../src/mcp-presence.js'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 /**
  * The bridge takes its target from the page, so this allowlist is the only thing
@@ -38,6 +46,47 @@ describe('allowedProbeOrigin', () => {
     expect(allowedProbeOrigin('   ')).toBeUndefined()
     expect(allowedProbeOrigin('127.0.0.1:37777')).toBeUndefined()
     expect(allowedProbeOrigin('not a url')).toBeUndefined()
+  })
+})
+
+/**
+ * The settings page can only stat a path from the host, so the probe reports what
+ * the host found. A worker whose health body says nothing about its install is the
+ * case this exists for: the worker is healthy, its MCP is "ready", and there is
+ * still nothing for this plugin to launch.
+ */
+describe('mcpClientReading', () => {
+  /** A worker installation: a worker script with the MCP server beside it. */
+  function installation(): { dir: string; workerPath: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'cm-bridge-spec-'))
+    const workerPath = join(dir, 'worker-service.cjs')
+    writeFileSync(workerPath, '', 'utf8')
+    writeFileSync(join(dir, 'mcp-server.cjs'), '', 'utf8')
+    return { dir, workerPath }
+  }
+
+  it('finds the server beside the path health publishes', async () => {
+    const { dir, workerPath } = installation()
+    await expect(mcpClientReading('http://127.0.0.1:1', { status: 'ok', workerPath }))
+      .resolves.toEqual({ available: true, serverPath: join(dir, 'mcp-server.cjs') })
+  })
+
+  it('asks the supervisor payload when health names no path', async () => {
+    const { dir, workerPath } = installation()
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ health: { workerPath } }),
+    }) as Response))
+    await expect(mcpClientReading('http://127.0.0.1:1', { status: 'ok' }))
+      .resolves.toEqual({ available: true, serverPath: join(dir, 'mcp-server.cjs') })
+  })
+
+  it('reports no server when the worker names none and its directory holds none', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cm-bridge-spec-'))
+    writeFileSync(join(dir, 'worker-service.cjs'), '', 'utf8')
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }) as Response))
+    await expect(mcpClientReading('http://127.0.0.1:1', { status: 'ok' })).resolves.toEqual({ available: false })
   })
 })
 

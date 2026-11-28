@@ -13,8 +13,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { HEALTH_BRIDGE_PATH, healthUrl } from './probe.js'
+import { HEALTH_BRIDGE_PATH, healthUrl, parseHealth, type McpClientReading } from './probe.js'
 import { buildOverview, OVERVIEW_BRIDGE_PATH, type Overview } from './overview.js'
+import { mcpClientReading } from './mcp-presence.js'
 
 /** Probe deadline; longer than a healthy round trip, short enough to feel live. */
 const PROBE_TIMEOUT_MS = 4_000
@@ -82,7 +83,7 @@ export interface WebRoute {
 
 /** What the page receives: the worker's answer, or why there is none. */
 type ProbeOutcome =
-  | { ok: true; body: unknown }
+  | { ok: true; body: unknown; mcpClient: McpClientReading }
   | { ok: false; code: 'http'; status: number }
   | { ok: false; code: 'unreachable'; message: string }
 
@@ -116,7 +117,8 @@ async function probe(origin: string): Promise<ProbeOutcome> {
   try {
     const response = await fetch(healthUrl(origin), { signal: controller.signal, headers: { accept: 'application/json' } })
     if (!response.ok) return { ok: false, code: 'http', status: response.status }
-    return { ok: true, body: await response.json() }
+    const body: unknown = await response.json()
+    return { ok: true, body, mcpClient: await mcpClientReading(origin, parseHealth(body), { signal: controller.signal }) }
   } catch (error: unknown) {
     return { ok: false, code: 'unreachable', message: error instanceof Error ? error.message : String(error) }
   } finally {

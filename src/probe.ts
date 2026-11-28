@@ -32,6 +32,21 @@ export interface HealthReading {
   readonly health: WorkerHealth
 }
 
+/**
+ * What the host found when it looked for the MCP server this plugin launches.
+ *
+ * The worker's own `mcpReady` answers for its in-process server; it says nothing
+ * about the child process a host starts from `mcp-server.cjs`. Only the host can
+ * look, because only it can stat a path, so the reading travels beside the health
+ * body instead of being read out of it.
+ */
+export interface McpClientReading {
+  /** True when the server file was found beside the worker script. */
+  readonly available: boolean
+  /** The server file, when one was found. */
+  readonly serverPath?: string
+}
+
 /** The health endpoint for a worker base URL. */
 export function healthUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/api/health`
@@ -72,10 +87,17 @@ export function parseHealth(payload: unknown): WorkerHealth | undefined {
  * Grade a parsed reading. A worker that answers but is not initialized or has
  * no MCP ready is reachable yet not usable, which is a different fix than an
  * unreachable one, so it reads as `warning` rather than `done`.
+ *
+ * `mcpClient` is the host's own finding about the server file. It is a second
+ * question from `mcpReady`: a worker can report its MCP ready while this host
+ * finds nothing to launch, which is exactly the failure that used to stay silent.
+ * @param health - the worker's health payload, already narrowed.
+ * @param mcpClient - whether the host found the server beside the worker script.
  */
-export function readHealth(health: WorkerHealth): HealthReading {
+export function readHealth(health: WorkerHealth, mcpClient?: McpClientReading): HealthReading {
   if (health.status !== 'ok') return { state: 'warning', key: 'unhealthy', health }
   if (health.initialized === false) return { state: 'warning', key: 'notInitialized', health }
   if (health.mcpReady === false) return { state: 'warning', key: 'mcpUnavailable', health }
+  if (mcpClient?.available === false) return { state: 'warning', key: 'mcpUnavailable', health }
   return { state: 'done', key: 'connected', health }
 }

@@ -2,6 +2,18 @@
 
 Fork of [Bleed00/dsh-claude-mem](https://github.com/Bleed00/dsh-claude-mem), starting from upstream 0.1.5.
 
+## 1.3.1
+
+### Added
+
+- The sidebar panel's status row reports whether the MCP server this plugin launches is actually there: `MCP client ready` when `mcp-server.cjs` sits beside the worker script, `MCP client not found` when it does not. The worker's own `MCP on/off` pill only ever described claude-mem's in-process server, so it stayed green while nothing was launchable.
+
+### Fixed
+
+- The MCP tools work again on claude-mem 16.0.1 and later. That release stopped publishing the worker's install path on `/api/health` (upstream #6309), and the plugin resolved `mcp-server.cjs` from that one field, so the three `mem_smart_*` tools and the six `mem_corpus_*` tools all failed with `MEM_MCP_UNAVAILABLE`. The path is now read from the health payload first (older workers) and from the supervisor payload at `/api/admin/doctor` second, which has carried it since 15.16.0.
+- A work-state write the worker refused is reported once instead of being retried. `/api/work-state/entries` answers 400 for invalid fields, 403 for a list the viewer may not write, and 409 for a write guard that refused the entry; the delegated-run archive read all three as a worker that might still start, retried three times over 17 seconds and nudged a worker that was already answering. Those statuses now raise `MEM_WRITE_REFUSED` and the archive reports one, while failures that may clear on their own — a dead process, a timeout, a reset connection — keep the retry window.
+- The settings health card no longer calls a worker "connected" when this host has nothing to launch. It graded only `mcpReady`, which describes the worker's own in-process MCP, so a healthy worker with a missing install path read as fine and the breakage stayed invisible until a model happened to call an MCP tool. The probe now resolves the same path the client uses and `stat`s `mcp-server.cjs` beside it; nothing there reads as "MCP is not ready".
+
 ## 1.3.0
 
 ### Added

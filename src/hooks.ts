@@ -21,7 +21,7 @@ import { statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import type { WorkerClient } from './worker.js'
 import { DSH_PLATFORM, type LiveSettings } from './settings.js'
-import type { MemObservationIngest } from './types.js'
+import { isRetryableWrite, type MemObservationIngest } from './types.js'
 import { OPEN_MODE, type MemoryMode } from './memory-mode.js'
 
 /** Read current settings; called wherever a value is used, never once at startup. */
@@ -354,7 +354,9 @@ export const ARCHIVE_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000, 10_000]
  * A worker that is merely starting recovers inside this window; one that stays
  * down loses a work-view hint (the launch's own `returnedAtEpoch` still says the
  * call returned), which is why no disk-backed outbox is kept for it: claude-mem
- * cannot accept this entry without an agent id any other way.
+ * cannot accept this entry without an agent id any other way. A refused write is
+ * reported once instead of retried: the answer would not change, and each retry
+ * nudges a worker that is already up.
  */
 export async function archiveSubagentStop(
   write: (cwd: string, fields: Record<string, unknown>) => Promise<unknown>,
@@ -364,15 +366,18 @@ export async function archiveSubagentStop(
     readonly delays?: readonly number[]
     readonly onRetry?: () => void
     readonly sleep?: (ms: number) => Promise<void>
+    readonly shouldRetry?: (error: unknown) => boolean
   } = {},
 ): Promise<boolean> {
   const delays = options.delays ?? ARCHIVE_RETRY_DELAYS_MS
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  const shouldRetry = options.shouldRetry ?? isRetryableWrite
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     try {
       await write(cwd, fields)
       return true
-    } catch {
+    } catch (error) {
+      if (shouldRetry(error) === false) return false
       if (attempt === delays.length) return false
       options.onRetry?.()
       await sleep(delays[attempt] ?? 0)

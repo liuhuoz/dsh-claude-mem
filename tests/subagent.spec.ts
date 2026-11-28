@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { archiveSubagentStop, attributionOf, hookToolName, rememberSubagent, subagentStopFields, type SubagentIdentity } from '../src/hooks.js'
+import { MemError } from '../src/types.js'
 
 /** The pieces of Agent this module reads: a session id plus its header. */
 function fakeAgent(id: string, header: Record<string, unknown>): Agent {
@@ -118,6 +119,17 @@ describe('archiveSubagentStop', () => {
     expect(write).toHaveBeenCalledTimes(4)
     expect(sleeps).toEqual([1, 2, 3])
     expect(onRetry).toHaveBeenCalledTimes(3)
+  })
+
+  it('reports a refused write once instead of retrying it', async () => {
+    const write = vi.fn(async () => {
+      throw new MemError('memory worker returned HTTP 409: write guard', 'MEM_WRITE_REFUSED')
+    })
+    const onRetry = vi.fn()
+    const result = await archiveSubagentStop(write, 'C:/work', fields, { delays: [0, 0, 0], onRetry, sleep: noSleep })
+    expect(result).toBe(false)
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(onRetry).not.toHaveBeenCalled()
   })
 
   it('stops retrying as soon as a write lands', async () => {

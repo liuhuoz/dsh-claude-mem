@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Input, StateDot, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConfigPageForm } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
-import { HEALTH_BRIDGE_PATH, parseHealth, readHealth } from '../probe.js'
+import { HEALTH_BRIDGE_PATH, parseHealth, readHealth, type McpClientReading } from '../probe.js'
 import { DEFAULT_FILE_CONTEXT_TOOLS, DEFAULT_TOOL_NAMES, SESSION_SEATS, type SessionSeat } from '../settings.js'
 import type { MessageKey } from './messages.js'
 
@@ -264,6 +264,7 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
         body?: unknown
         code?: string
         status?: number
+        mcpClient?: McpClientReading
       }
       if (payload.ok !== true) {
         setProbe({
@@ -279,7 +280,7 @@ export function ClaudeMemPage({ t, view, form }: ClaudeMemPageProps): JSX.Elemen
         setProbe({ kind: 'error', text: t('probeNotWorker') })
         return
       }
-      const reading = readHealth(health)
+      const reading = readHealth(health, payload.mcpClient)
       if (reading.state === 'done') {
         setProbe({ kind: 'done', version: health.version, pid: health.pid, provider: health.provider })
         return
