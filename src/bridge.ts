@@ -13,8 +13,10 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { HEALTH_BRIDGE_PATH, healthUrl } from './probe.js'
+import { HEALTH_BRIDGE_PATH, healthUrl, parseHealth, type McpClientReading, type WorkerHealth } from './probe.js'
 import { buildOverview, OVERVIEW_BRIDGE_PATH, type Overview } from './overview.js'
+import { mcpServerBeside } from './claude-mem-mcp.js'
+import { workerPathFromDoctor } from './worker.js'
 
 /** Probe deadline; longer than a healthy round trip, short enough to feel live. */
 const PROBE_TIMEOUT_MS = 4_000
@@ -82,7 +84,7 @@ export interface WebRoute {
 
 /** What the page receives: the worker's answer, or why there is none. */
 type ProbeOutcome =
-  | { ok: true; body: unknown }
+  | { ok: true; body: unknown; mcpClient: McpClientReading }
   | { ok: false; code: 'http'; status: number }
   | { ok: false; code: 'unreachable'; message: string }
 
@@ -116,12 +118,46 @@ async function probe(origin: string): Promise<ProbeOutcome> {
   try {
     const response = await fetch(healthUrl(origin), { signal: controller.signal, headers: { accept: 'application/json' } })
     if (!response.ok) return { ok: false, code: 'http', status: response.status }
-    return { ok: true, body: await response.json() }
+    const body: unknown = await response.json()
+    return { ok: true, body, mcpClient: await mcpClientReading(origin, parseHealth(body), controller.signal) }
   } catch (error: unknown) {
     return { ok: false, code: 'unreachable', message: error instanceof Error ? error.message : String(error) }
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Whether the MCP server this plugin launches is actually there.
+ *
+ * The path comes from the worker itself, and both places it has ever been
+ * published are read: the health payload (up to claude-mem 16.0.0) and the
+ * supervisor diagnostics (since). The server ships beside the worker script, so
+ * one `stat` answers it. A worker that names no script, or names a directory with
+ * no server in it, is what the settings page shows as "MCP is not ready".
+ * @param origin - the loopback worker origin the page asked about.
+ * @param health - the worker's health body, when it parsed.
+ * @param signal - the probe's deadline, so a slow doctor cannot outlive the probe.
+ */
+export async function mcpClientReading(
+  origin: string,
+  health: WorkerHealth | undefined,
+  signal?: AbortSignal,
+): Promise<McpClientReading> {
+  let workerPath = health?.workerPath
+  if (workerPath === undefined) {
+    try {
+      const response = await fetch(`${origin}/api/admin/doctor`, {
+        ...signal === undefined ? {} : { signal },
+        headers: { accept: 'application/json' },
+      })
+      if (response.ok) workerPath = workerPathFromDoctor(await response.json())
+    } catch {
+      // A worker that cannot answer its own diagnostics names no script.
+    }
+  }
+  const serverPath = mcpServerBeside(workerPath)
+  return serverPath === undefined ? { available: false } : { available: true, serverPath }
 }
 
 /** How long one aggregated overview is reused before the next request refetches it. */
