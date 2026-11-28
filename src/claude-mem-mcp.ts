@@ -65,9 +65,9 @@ export interface ClaudeMemMcpOptions {
 /**
  * Call one claude-mem MCP tool.
  *
- * The server path is resolved once per process from the worker's health payload
- * and reused; a health read that names no server is reported as this tool's own
- * failure rather than a crash.
+ * The server path is resolved once per process from the install the worker
+ * reports and reused; a worker that names no server is reported as this tool's
+ * own failure rather than a crash.
  */
 export class ClaudeMemMcp {
   private serverPath: string | undefined
@@ -86,8 +86,7 @@ export class ClaudeMemMcp {
 
   private async script(signal?: AbortSignal): Promise<string> {
     if (this.serverPath !== undefined) return this.serverPath
-    const health = await this.worker.health(signal)
-    const script = mcpServerBeside(health.workerPath)
+    const script = mcpServerBeside(await this.worker.workerScriptPath(signal))
     if (script === undefined) {
       throw new MemError(
         'claude-mem reported no MCP server beside its worker; reinstall or repair the installation',

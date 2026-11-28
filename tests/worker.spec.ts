@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { WorkerClient } from '../src/worker.ts'
+import { WorkerClient, workerPathFromDoctor } from '../src/worker.ts'
 
 const limits = { baseUrl: 'http://127.0.0.1:39999', timeoutMs: 30_000 }
 
@@ -250,5 +250,45 @@ describe('WorkerClient.ingestObservation', () => {
     }) as Response))
     const client = new WorkerClient(limits)
     await expect(client.ingestObservation(base)).rejects.toMatchObject({ code: 'MEM_PROVIDER_ERROR' })
+  })
+})
+
+describe('WorkerClient.workerScriptPath', () => {
+  /** One fetch stub that answers health and doctor from the same URL map. */
+  function stubRoutes(routes: Record<string, unknown>): void {
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      const href = String(url)
+      const key = Object.keys(routes).find(path => href.endsWith(path))
+      if (key === undefined) return { ok: false, status: 404, text: async () => '', json: async () => ({}) } as Response
+      const body = routes[key]
+      return { ok: true, status: 200, json: async () => body, text: async () => '' } as Response
+    }))
+  }
+
+  it('uses the path an older worker publishes on health', async () => {
+    stubRoutes({ '/api/health': { status: 'ok', workerPath: 'C:/cm/scripts/worker-service.cjs' } })
+    const client = new WorkerClient(limits)
+    await expect(client.workerScriptPath()).resolves.toBe('C:/cm/scripts/worker-service.cjs')
+  })
+
+  it('falls back to the supervisor payload when health names no path', async () => {
+    stubRoutes({
+      '/api/health': { status: 'ok' },
+      '/api/admin/doctor': { health: { workerPath: 'C:/cm/17.0.2/scripts/worker-service.cjs' } },
+    })
+    const client = new WorkerClient(limits)
+    await expect(client.workerScriptPath()).resolves.toBe('C:/cm/17.0.2/scripts/worker-service.cjs')
+  })
+
+  it('names no script when neither payload carries one', async () => {
+    stubRoutes({ '/api/health': { status: 'ok' }, '/api/admin/doctor': { health: {} } })
+    const client = new WorkerClient(limits)
+    await expect(client.workerScriptPath()).resolves.toBeUndefined()
+  })
+
+  it('reads nothing out of a doctor payload of another shape', () => {
+    expect(workerPathFromDoctor({ health: { workerPath: '  ' } })).toBeUndefined()
+    expect(workerPathFromDoctor({ health: null })).toBeUndefined()
+    expect(workerPathFromDoctor('nope')).toBeUndefined()
   })
 })
