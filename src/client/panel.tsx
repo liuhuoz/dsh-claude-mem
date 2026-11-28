@@ -290,6 +290,9 @@ function OverviewTab({ t }: { t: Translate }): JSX.Element {
         {processing?.lastSuccessfulStoreAt !== undefined ? <span style={styles.pill}>{t('ovLastStore', { when: relative(processing.lastSuccessfulStoreAt, t) })}</span> : null}
         {worker?.activeSessions !== undefined ? <span style={styles.pill}>{t('ovActiveSessions', { count: worker.activeSessions })}</span> : null}
         {data.mcp?.enabled !== undefined ? <span style={styles.pill}>{t('ovMcp', { state: data.mcp.enabled ? t('on') : t('off') })}</span> : null}
+        {data.mcpClient !== null ? (
+          <span style={styles.pill}>{t('ovMcpClient', { state: data.mcpClient.available ? t('ovClientReady') : t('ovClientMissing') })}</span>
+        ) : null}
         {data.chroma?.status !== undefined ? <span style={styles.pill}>{t('ovVector', { state: data.chroma.status === 'disabled' ? t('ovVectorOff') : data.chroma.status })}</span> : null}
       </div>
 

@@ -5,6 +5,8 @@
  * @module dsh-claude-mem/overview-types
  */
 
+import type { McpClientReading } from './probe.js'
+
 /** One labelled field of a session summary, e.g. "Request". */
 export interface InjectionField {
   /** The label claude-mem writes, e.g. "Next Steps". */
@@ -45,6 +47,8 @@ export interface Overview {
   readonly database: { observations?: number; sessions?: number; summaries?: number; sizeBytes?: number; firstObservationAt?: string } | null
   readonly processing: { queueDepth?: number; isProcessing?: boolean; lastSuccessfulStoreAt?: number } | null
   readonly mcp: { enabled?: boolean } | null
+  /** Whether the server this plugin launches is on disk beside the worker. */
+  readonly mcpClient: McpClientReading
   readonly chroma: { status?: string } | null
   readonly projects: { total: number; active: number; excluded: number } | null
   readonly recent: readonly { type: string; title: string; project: string; createdAt: string }[] | null

@@ -76,6 +76,20 @@ describe('buildOverview', () => {
     expect(overview.chroma).toEqual({ status: 'disabled' })
   })
 
+  it('reports the MCP server the plugin would launch, not the worker flag', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mem-overview-mcp-'))
+    const workerPath = join(dir, 'worker-service.cjs')
+    writeFileSync(workerPath, '', 'utf8')
+    writeFileSync(join(dir, 'mcp-server.cjs'), '', 'utf8')
+    const overview = await buildOverview({
+      baseUrl: 'http://127.0.0.1:37777',
+      now: NOW,
+      fetchImpl: fakeFetch({ ...payloads, '/api/health': { status: 'ok', version: '16.0.3', workerPath } }),
+      telemetryPath: telemetry(utcDay(NOW), 1, 1),
+    })
+    expect(overview.mcpClient).toEqual({ available: true, serverPath: join(dir, 'mcp-server.cjs') })
+  })
+
   it('counts only projects whose session produced a summary', async () => {
     const overview = await buildOverview({
       baseUrl: 'http://127.0.0.1:37777',

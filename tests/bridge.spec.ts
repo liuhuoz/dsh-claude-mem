@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { admissionRejection, allowedProbeOrigin, mcpClientReading } from '../src/bridge.js'
+import { admissionRejection, allowedProbeOrigin } from '../src/bridge.js'
+import { mcpClientReading } from '../src/mcp-presence.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()
