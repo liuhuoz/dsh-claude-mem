@@ -292,3 +292,27 @@ describe('WorkerClient.workerScriptPath', () => {
     expect(workerPathFromDoctor('nope')).toBeUndefined()
   })
 })
+
+describe('WorkerClient.workStateWrite', () => {
+  const request = { cwd: 'C:/work', list: 'agent-lifecycle', fields: { task: 't' } }
+
+  it('reports a refused write under its own code', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      text: async () => 'a check command refused this write',
+    }) as Response))
+    const client = new WorkerClient(limits)
+    await expect(client.workStateWrite(request)).rejects.toMatchObject({ code: 'MEM_WRITE_REFUSED' })
+  })
+
+  it('keeps a transient failure retryable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: async () => 'initializing',
+    }) as Response))
+    const client = new WorkerClient(limits)
+    await expect(client.workStateWrite(request)).rejects.toMatchObject({ code: 'MEM_PROVIDER_ERROR' })
+  })
+})

@@ -21,6 +21,18 @@ export class MemError extends Error {
 }
 
 /**
+ * Whether a failed work-state write deserves another attempt.
+ *
+ * A refusal (`MEM_WRITE_REFUSED`: invalid fields, a reserved list, a write guard)
+ * is answered identically every time, so retrying only delays the report and wakes
+ * a worker that did answer. Everything else — a dead process, a timeout, a reset
+ * connection — may clear on its own.
+ */
+export function isRetryableWrite(error: unknown): boolean {
+  return !(error instanceof MemError && error.code === 'MEM_WRITE_REFUSED')
+}
+
+/**
  * One persisted observation returned by a memory query. Mirrors the worker HTTP
  * API's `/api/observations/batch` shape as closely as possible so tool output
  * keeps parity with a direct API call: every field the worker returns is

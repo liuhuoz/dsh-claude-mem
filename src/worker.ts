@@ -45,6 +45,9 @@ const MEM_TIMEOUT = 'MEM_TIMEOUT'
 /** Supervisor diagnostic payload; the worker's install path lives here since claude-mem 16.0.1. */
 const DOCTOR_PATH = '/api/admin/doctor'
 
+/** Statuses the worker uses to refuse a write outright: 400 invalid fields, 403 not admitted, 409 write guard. */
+const WRITE_REFUSAL_STATUSES: ReadonlySet<number> = new Set([400, 403, 409])
+
 /** A deadline signal plus its timer cleanup; safe to dispose once. */
 interface Deadline {
   readonly signal: AbortSignal
@@ -348,7 +351,10 @@ export class WorkerClient {
     }
     if (!response.ok) {
       const text = await response.text().catch(() => '')
-      throw new MemError(`memory worker returned HTTP ${response.status}: ${text.slice(0, 500)}`, 'MEM_PROVIDER_ERROR')
+      // A refusal answers the same way however many times it is sent, so it gets
+      // its own code: callers retry a transient failure and report this one once.
+      const code = WRITE_REFUSAL_STATUSES.has(response.status) ? 'MEM_WRITE_REFUSED' : 'MEM_PROVIDER_ERROR'
+      throw new MemError(`memory worker returned HTTP ${response.status}: ${text.slice(0, 500)}`, code)
     }
     return await response.text()
   }
