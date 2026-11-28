@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { observationIngest, observationPayload } from '../src/hooks.js'
+import { failureText, observationIngest, observationPayload } from '../src/hooks.js'
 
 const SUCCESS = {
   cwd: 'C:/work',
@@ -16,6 +16,28 @@ const FAILURE = {
   text: 'exit code 1',
   failed: true,
 } as const
+
+describe('failureText', () => {
+  it('reads the message a failure carries', () => {
+    expect(failureText({ name: 'ToolError', code: 'E_IO', message: '  exit code 1  ' })).toBe('exit code 1')
+  })
+
+  it('falls back to the structured code when no message is there', () => {
+    expect(failureText({ name: 'ToolError', code: 'E_IO' })).toBe('E_IO')
+    expect(failureText({ name: 'ToolError', code: 'E_IO', message: '   ' })).toBe('E_IO')
+  })
+
+  it('keeps a plain string failure', () => {
+    expect(failureText('  exit code 1 ')).toBe('exit code 1')
+  })
+
+  it('names nothing when the shape carries no text', () => {
+    expect(failureText(undefined)).toBe('')
+    expect(failureText(null)).toBe('')
+    expect(failureText({})).toBe('')
+    expect(failureText(42)).toBe('')
+  })
+})
 
 describe('observationPayload', () => {
   it('reports a successful call through tool_response under PostToolUse', () => {

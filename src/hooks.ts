@@ -748,13 +748,33 @@ function observeToolResult(
   if (delegated && !settings.subagents) return
   const text = resultContentText(result.content)
   // A failure is evidence of an attempt, so it is recorded like any other
-  // result; when the call produced no body of its own the error message is it.
-  const body = text.length > 0 ? text : result.isError ? result.error.message.trim() : ''
+  // result; when the call produced no body of its own the error text is it.
+  const body = text.length > 0 ? text : result.isError ? failureText(result.error) : ''
   if (body.length === 0) return
   // A delegated run writes under its parent's name, so the parent's mode decides.
   const attribution = attributionOf(agent, subagents)
   if (isReadOnly(attribution.sessionId, agent.session)) return
   recordToolUse(worker, exec, agent, body, settings, attribution, result.isError)
+}
+
+/**
+ * What a failed call says about itself.
+ *
+ * The harness now normalizes tool failures to a structured `{ name, code }`, and
+ * its release notes leave the human-readable message as an open question, so the
+ * message is read when present and the code stands in when it is not. A failure
+ * that names neither contributes no text — the same shape as a call that produced
+ * no body, which records nothing.
+ * @param error - the failure the executor reported, in whatever shape it has.
+ * @returns the text to store, trimmed, or '' when it names none.
+ */
+export function failureText(error: unknown): string {
+  if (typeof error === 'string') return error.trim()
+  if (error === null || typeof error !== 'object') return ''
+  const record = error as { message?: unknown; code?: unknown }
+  const message = typeof record.message === 'string' ? record.message.trim() : ''
+  if (message.length > 0) return message
+  return typeof record.code === 'string' ? record.code.trim() : ''
 }
 
 async function summarizeSession(worker: WorkerClient, agent: Agent, settings: LiveSettings): Promise<void> {
